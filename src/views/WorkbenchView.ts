@@ -1,0 +1,2042 @@
+import { ItemView, WorkspaceLeaf, Notice, Modal, setIcon, App, MarkdownRenderer } from "obsidian";
+import type KnowledgeWorkbenchPlugin from "../main";
+import {
+  computeStats,
+  recentFiles,
+  openFile,
+  filesUnder,
+} from "../services/vaultService";
+import { scanKcCards, groupByDomain, dueCards } from "../services/kcService";
+import { scanProjects } from "../services/projectService";
+import { summarizeTasks } from "../services/taskService";
+import {
+  buildHabitRecords,
+  toggleHabit,
+  lastNDays,
+  HabitData,
+  defaultHabits,
+} from "../services/habitService";
+import { TFile } from "obsidian";
+import { MoltenBackground } from "../backgrounds/MoltenBackground";
+import { crewBackdropDataUri } from "../backgrounds/crewBackdrop";
+import { WIDGETS, getWidget, CATEGORIES, groupWidgetsByCategory } from "../widgets/registry";
+import { loadSharedData, saveSharedData, SharedData, defaultSharedData } from "../services/sharedStore";
+import type { WidgetCtx, LoadedData } from "../widgets/types";
+
+export const WORKBENCH_VIEW_TYPE = "knowledge-workbench-view";
+
+type Page = "home" | "domains" | "wiki" | "podcast" | "board" | "config" | "news" | "stocks" | "topics";
+
+export class WorkbenchView extends ItemView {
+  plugin: KnowledgeWorkbenchPlugin;
+  private page: Page = "home";
+  private data: LoadedData | null = null;
+  private molten: MoltenBackground | null = null;
+  private bgLayer: HTMLElement | null = null;
+  /** 共享数据（vault 00_工具/工作台数据.json，与 Web 端共用一份） */
+  private sharedData: SharedData = defaultSharedData();
+
+  constructor(leaf: WorkspaceLeaf, plugin: KnowledgeWorkbenchPlugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+
+  getViewType(): string {
+    return WORKBENCH_VIEW_TYPE;
+  }
+
+  getDisplayText(): string {
+    return "🏴‍☠️ 知识库工作台";
+  }
+
+  getIcon(): string {
+    return "anchor";
+  }
+
+  async onOpen() {
+    await this.reload();
+  }
+
+  async onClose() {
+    if (this.molten) {
+      this.molten.unmount();
+      this.molten = null;
+    }
+    this.cleanupWidgets();
+    this.bgLayer = null;
+    this.containerEl.empty();
+  }
+
+  /** 清理所有已启用 widget 的实例资源（window 监听 / observer 等） */
+  private cleanupWidgets() {
+    const active = this.plugin.settings.activeWidgets?.length
+      ? this.plugin.settings.activeWidgets
+      : WIDGETS.map((w) => w.id);
+    for (const instId of active) {
+      const [baseId] = instId.split("#");
+      const w = getWidget(baseId);
+      if (!w || typeof w.onunload !== "function") continue;
+      try {
+        w.onunload();
+      } catch (e) {
+        console.error(`[workbench] widget ${baseId} onunload 失败`, e);
+      }
+    }
+  }
+
+  /** 全量加载数据并渲染 */
+  async reload() {
+    const base = this.plugin.settings.knowledgeBasePath;
+    const [stats, kcCards, projects, tasks, recent] = await Promise.all([
+      computeStats(this.app, base),
+      Promise.resolve(scanKcCards(this.app, base)),
+      Promise.resolve(scanProjects(this.app, base)),
+      summarizeTasks(this.app, base),
+      Promise.resolve(recentFiles(this.app, base, 6)),
+    ]);
+
+    const inboxRoot = base ? `${base}/00 - Inbox 灵感库` : "00 - Inbox 灵感库";
+    const clipRoot = base ? `${base}/03 - Resources 参考资料` : "03 - Resources 参考资料";
+    const inbox = filesUnder(this.app, inboxRoot);
+    const clippings = filesUnder(this.app, clipRoot).filter(
+      (f) => f.path.includes("Clipping") || f.path.includes("剪藏")
+    );
+
+    this.data = { stats, kcCards, projects, tasks, recent, inbox, clippings };
+    // 加载共享数据（vault 00_工具/工作台数据.json，与 Web 端共用）
+    this.sharedData = await loadSharedData(this.app);
+    this.render();
+  }
+
+  /** 主渲染入口：按当前页绘制 */
+  render() {
+    this.containerEl.empty();
+    const wrap = this.containerEl.createDiv({ cls: "workbench-container" });
+
+    // 每次渲染重建（DOM 已清空，旧引用失效），先释放旧 WebGL 上下文与 widget 资源
+    if (this.molten) {
+      this.molten.unmount();
+      this.molten = null;
+    }
+    this.cleanupWidgets();
+    this.bgLayer = null;
+
+    // 左侧竖栏 + 主内容区（首页与子页共用骨架）
+    this.buildSidebar(wrap);
+    const main = wrap.createDiv({ cls: "wb-main" });
+    this.buildHero(main);
+
+    if (this.plugin.settings.showEffects) {
+      this.buildEffects(wrap);
+    }
+
+    if (!this.data) {
+      main.createDiv({ cls: "wb-empty", text: "⛵ 正在探索海域…" });
+      return;
+    }
+
+    if (this.page === "home") {
+      this.renderHome(main);
+      // 首页自由布局：glow + 位置初始化 + 视口揭示（仅画布内卡片）
+      main.querySelectorAll<HTMLElement>(
+        ".wb-widgets .wb-panel, .wb-widgets .wb-kpi-card, .wb-widgets .wb-chart"
+      ).forEach((el) => {
+        el.classList.add("wb-glow");
+        this.attachGlow(el);
+      });
+      this.initDashboardLayout(main);
+      this.attachRevealObserver(main);
+    } else {
+      this.renderPage(main);
+      // 子页面组件画布：渲染该页组件并启用自由布局（选择器限定画布内，固定面板不受影响）
+      const canvas = this.renderWidgetCanvas(main, this.page);
+      if (canvas) {
+        main.querySelectorAll<HTMLElement>(
+          ".wb-widgets .wb-panel, .wb-widgets .wb-kpi-card, .wb-widgets .wb-chart"
+        ).forEach((el) => {
+          el.classList.add("wb-glow");
+          this.attachGlow(el);
+        });
+        this.initDashboardLayout(main);
+        this.attachRevealObserver(main);
+      }
+    }
+  }
+
+  /** 侧边栏菜单：顶部收起按钮 + 各页（Emoji+文字），点击切换当前页 */
+  private buildSidebar(wrap: HTMLElement) {
+    const sb = wrap.createDiv({ cls: "wb-sidebar" });
+    const collapsed = !!this.plugin.settings.sidebarCollapsed;
+    if (collapsed) sb.addClass("collapsed");
+
+    // 收起/展开按钮（置顶）
+    const toggle = sb.createDiv({ cls: "wb-side-toggle" });
+    const toggleIcon = toggle.createSpan({ cls: "wb-side-icon", text: collapsed ? "▶" : "◀" });
+    const toggleLabel = toggle.createSpan({ cls: "wb-side-label", text: collapsed ? "" : "收起" });
+    toggle.addEventListener("click", () => {
+      const nowCollapsed = sb.classList.toggle("collapsed");
+      this.plugin.settings.sidebarCollapsed = nowCollapsed;
+      this.plugin.saveSettings();
+      toggleIcon.setText(nowCollapsed ? "▶" : "◀");
+      toggleLabel.setText(nowCollapsed ? "" : "收起");
+    });
+
+    const items: [string, string, Page][] = [
+      ["🧭", "首页概览", "home"],
+      ["📚", "知识领域", "domains"],
+      ["🗺️", "概念库", "wiki"],
+      ["🎧", "精选播客", "podcast"],
+      ["✅", "每日打卡", "board"],
+      ["📰", "行业新闻", "news"],
+      ["📈", "股票池", "stocks"],
+      ["🎯", "选题池", "topics"],
+      ["⚙️", "系统配置", "config"],
+    ];
+    for (const [icon, label, page] of items) {
+      const item = sb.createDiv({ cls: "wb-side-item" + (this.page === page ? " active" : "") });
+      item.createSpan({ cls: "wb-side-icon", text: icon });
+      item.createSpan({ cls: "wb-side-label", text: label });
+      item.addEventListener("click", () => this.goto(page));
+    }
+  }
+
+  /** 顶部 hero 头图：海贼全员图 + MoltenMetal 熔岩动态（网页头图/轮播风格） */
+  private buildHero(wrap: HTMLElement) {
+    const hero = wrap.createDiv({ cls: "wb-hero" });
+    this.bgLayer = hero;
+
+    // 海贼王全员海报（支持自定义头图）
+    const heroSrc = this.plugin.settings.heroImageDataUrl || crewBackdropDataUri();
+    hero.createEl("img", {
+      cls: "wb-hero-crew",
+      attr: { src: heroSrc, alt: "" },
+    });
+
+    // 悬浮上传按钮（右上角，hover 显示）
+    const uploadBtn = hero.createDiv({ cls: "wb-hero-upload" });
+    uploadBtn.innerHTML = "🖼️ 更换头图";
+    uploadBtn.addEventListener("click", async () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        try {
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          this.plugin.settings.heroImageDataUrl = dataUrl;
+          await this.plugin.saveSettings();
+          new Notice("✅ 头图已更新");
+          this.reload();
+        } catch (e) {
+          console.error(e);
+          new Notice("❌ 读取图片失败");
+        }
+      };
+      input.click();
+    });
+
+    // 熔岩动态容器（WebGL，叠加在全员图上）
+    const moltenHost = hero.createDiv({ cls: "wb-hero-molten" });
+    this.molten = new MoltenBackground();
+    this.molten.mount(moltenHost, {
+      color1: "#8b5cf6",   // 紫
+      color2: "#e11d2e",   // 路飞红
+      color3: "#fbbf24",   // 宝藏金
+      speed: 0.35,
+      scale: 4,
+      detail: 3,
+      glow: 1.6,
+      coreSize: 0.1,
+      swirl: 1,
+      fold: -0.2,
+      blackPoint: 0.05,
+      brightness: 1.3,
+      colorMode: "molten",
+      grain: true,
+      grainIntensity: 0.05,
+      mouseInteraction: true,
+      mouseStrength: 0.3,
+      opacity: 1.0,
+    });
+
+    // 右下角固定功能按钮（参考图胶囊样式）
+    const actions = hero.createDiv({ cls: "wb-hero-actions" });
+    const makeAction = (label: string, onClick: () => void) => {
+      const btn = actions.createSpan({ cls: "wb-hero-action", text: label });
+      btn.addEventListener("click", onClick);
+    };
+
+    // 搜索：打开 Obsidian 全局搜索
+    makeAction("🔍 搜索", () => {
+      // @ts-ignore
+      this.app.commands.executeCommandById("global-search:open");
+    });
+    // 新建：添加组件（打开 AddWidgetModal）
+    makeAction("➕ 新建", () => {
+      new AddWidgetModal(this.app, (widgetId) => this.addWidgetInstance(widgetId)).open();
+    });
+    // 刷新：重渲染工作台视图
+    makeAction("🔄 刷新", () => {
+      this.reload();
+    });
+    // 设置：进入工作台配置页
+    makeAction("⚙️ 设置", () => {
+      this.goto("config");
+    });
+    // 皮肤：太阳/月亮切换深色/浅色主题（双触发：配置持久化 + 命令真正刷新外观）
+    const themeBtn = actions.createSpan({ cls: "wb-hero-action wb-theme-toggle" });
+    const moon = themeBtn.createSpan({ cls: "wb-theme-moon", text: "🌙" });
+    const sun = themeBtn.createSpan({ cls: "wb-theme-sun", text: "☀️" });
+
+    const applyThemeIconState = () => {
+      const isDark = document.body.classList.contains("theme-dark");
+      moon.classList.toggle("active", isDark);
+      sun.classList.toggle("active", !isDark);
+    };
+    applyThemeIconState();
+
+    themeBtn.addEventListener("click", () => {
+      const isDark = document.body.classList.contains("theme-dark");
+      const goDark = !isDark; // 目标明暗：当前深则切浅，否则切深
+      const base = goDark ? "obsidian" : "mink";
+      // 1) 持久化 Obsidian 基础明暗配置
+      try {
+        // @ts-ignore baseTheme 是 Obsidian 内置明暗设置项
+        this.app.vault.setConfig("baseTheme", base);
+      } catch (e) { /* 某些版本不容忍未知 key，忽略 */ }
+      // 2) 触发 Obsidian 真正刷新外观（命令方式最确定生效，会让 --background-primary 等原生变量重算 → 工作台自动跟随）
+      try {
+        // @ts-ignore 运行时存在 commands，但 obsidian 类型未声明
+        this.app.commands.executeCommandById(goDark ? "theme:use-dark" : "theme:use-light");
+      } catch (e) { /* 忽略 */ }
+      // 3) 兜底：同步 body 明暗类（驱动任何 body.theme-* 自定义样式）
+      document.body.classList.toggle("theme-dark", goDark);
+      document.body.classList.toggle("theme-light", !goDark);
+      applyThemeIconState();
+      new Notice(goDark ? "🌙 已切换到深色主题" : "☀️ 已切换到浅色主题");
+    });
+
+    applyThemeIconState();
+  }
+
+  /** Border Glow 光标驱动：计算边缘接近度与光标角度（React Bits 移植） */
+  private attachGlow(el: HTMLElement) {
+    if (!el.querySelector(":scope > .edge-light")) {
+      el.createDiv({ cls: "edge-light" });
+    }
+    el.addEventListener("pointermove", (e) => {
+      const rect = el.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      const dx = x - cx;
+      const dy = y - cy;
+
+      // 边缘接近度：光标越靠边缘 → 越接近 100
+      let kx = Infinity;
+      let ky = Infinity;
+      if (dx !== 0) kx = cx / Math.abs(dx);
+      if (dy !== 0) ky = cy / Math.abs(dy);
+      const edge = Math.min(Math.max(1 / Math.min(kx, ky), 0), 1);
+
+      // 光标角度（0-360）
+      let angle = 0;
+      if (dx !== 0 || dy !== 0) {
+        const radians = Math.atan2(dy, dx);
+        let degrees = radians * (180 / Math.PI) + 90;
+        if (degrees < 0) degrees += 360;
+        angle = degrees;
+      }
+
+      el.style.setProperty("--edge-proximity", `${(edge * 100).toFixed(3)}`);
+      el.style.setProperty("--cursor-angle", `${angle.toFixed(3)}deg`);
+    });
+  }
+
+  /** 进入视口触发：wipe reveal + 面板淡入 */
+  private attachRevealObserver(container: HTMLElement) {
+    if (!("IntersectionObserver" in window)) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.08, rootMargin: "0px 0px -40px 0px" }
+    );
+
+    container.querySelectorAll<HTMLElement>("[data-reveal='wipe']").forEach((el) => {
+      observer.observe(el);
+    });
+    container.querySelectorAll<HTMLElement>(".wb-panel").forEach((el) => {
+      observer.observe(el);
+    });
+
+    // 立即检查一次：避免首屏元素因为已经在视口内而永远不触发
+    requestAnimationFrame(() => {
+      container.querySelectorAll<HTMLElement>("[data-reveal='wipe'], .wb-panel").forEach((el) => {
+        const rect = el.getBoundingClientRect();
+        if (rect.top < window.innerHeight && rect.bottom > 0) {
+          el.classList.add("is-visible");
+          observer.unobserve(el);
+        }
+      });
+    });
+
+    // 安全网：1 秒后仍未触发的面板强制显示，避免 observer 失效导致内容丢失
+    setTimeout(() => {
+      container.querySelectorAll<HTMLElement>(".wb-panel:not(.is-visible)").forEach((el) => {
+        el.classList.add("is-visible");
+      });
+    }, 1000);
+  }
+
+  /** 自由布局：初始化卡片位置 + 绑定拖拽/缩放（仅处理画布内卡片，排除子页固定面板） */
+  private initDashboardLayout(container: HTMLElement) {
+    const layout = this.plugin.settings.dashboardLayout || {};
+    const cards = container.querySelectorAll<HTMLElement>(
+      ".wb-widgets .wb-panel, .wb-widgets .wb-kpi-card, .wb-widgets .wb-chart"
+    );
+    const base = container.getBoundingClientRect();
+    
+    // 初始网格布局（如果没有保存的位置）
+    const total = cards.length;
+    const cols = Math.max(1, Math.ceil(Math.sqrt(total)));
+    const gap = 12;
+    // cellW 需容纳最宽卡片（面板 260px），避免初始网格互相重叠
+    const cellW = Math.max(260, (container.clientWidth - (cols - 1) * gap) / cols);
+    const cellH = 180;
+
+    cards.forEach((el, i) => {
+      // 确保每个卡片有 data-id
+      if (!el.dataset.id) {
+        el.dataset.id = el.classList.contains("wb-kpi-card") ? `stat-${i}` : `card-${i}`;
+      }
+      const id = el.dataset.id;
+      const saved = layout[id];
+      
+      // 计算相对于 base 的初始网格位置
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const gridLeft = col * (cellW + gap);
+      const gridTop = row * (cellH + gap);
+      
+      // 应用保存的位置，或初始网格位置
+      if (saved && saved.x != null && saved.y != null) {
+        el.style.left = saved.x + "px";
+        el.style.top = saved.y + "px";
+        // 尺寸由 CSS 固定/内容自适应的卡片：只恢复位置，不恢复保存的固定宽高
+        // （masked-heading 贴合文字；web-preview/media-gallery/directory 固定高度内部滚动）
+        const sizeByCss =
+          el.classList.contains("masked-heading") ||
+          el.classList.contains("web-preview") ||
+          el.classList.contains("media-gallery") ||
+          el.classList.contains("directory");
+        if (!sizeByCss) {
+          if (saved.w) el.style.width = saved.w + "px";
+          if (saved.h) el.style.height = saved.h + "px";
+        }
+      } else {
+        el.style.left = gridLeft + "px";
+        el.style.top = gridTop + "px";
+      }
+
+      // 绑定拖拽：对 .wb-panel 和 .wb-chart 用标题栏，对 .wb-kpi-card 用整个卡片
+      const dragHandle = el.classList.contains("wb-kpi-card") ? el : (el.querySelector(".wb-hd") || el);
+      dragHandle.addEventListener("mousedown", (e) => {
+        if ((e.target as HTMLElement).closest(".wb-more")) return;
+        this.startDrag(e as MouseEvent, el);
+      });
+
+      // 绑定缩放
+      const resizeHandle = el.querySelector(".wb-resize-handle");
+      if (resizeHandle) {
+        resizeHandle.addEventListener("mousedown", (e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const ev = e as MouseEvent;
+          this.resizeState = {
+            el,
+            startX: ev.clientX,
+            startY: ev.clientY,
+            origW: el.offsetWidth,
+            origH: el.offsetHeight,
+          };
+          el.classList.add("resizing");
+        });
+      }
+    });
+
+    // 全局事件（只绑定一次；registerDomEvent 在视图关闭时自动注销，避免监听泄漏）
+    if (!this._dragBound) {
+      this._dragBound = true;
+      this.registerDomEvent(document, "mouseup", () => {
+        this.endDrag();
+        this.endResize();
+      });
+      this.registerDomEvent(document, "mousemove", (e) => {
+        this.onDrag(e as MouseEvent);
+        this.applyResize(e as MouseEvent);
+      });
+    }
+
+    // 撑开画布高度：卡片为绝对定位，画布自身高度为 0，需按网格总行数补足，
+    // 否则底部导航会被卡片覆盖、页面高度塌陷
+    const canvas = container.querySelector<HTMLElement>(".wb-widgets");
+    if (canvas) {
+      const rows = Math.max(1, Math.ceil(total / cols));
+      canvas.style.height = rows * (cellH + gap) + gap + "px";
+    }
+  }
+  private _dragBound = false;
+  private dragState: { el: HTMLElement; startX: number; startY: number; origLeft: number; origTop: number } | null = null;
+  private resizeState: { el: HTMLElement; startX: number; startY: number; origW: number; origH: number } | null = null;
+
+  private startDrag(e: MouseEvent, el: HTMLElement) {
+    const rect = el.getBoundingClientRect();
+    this.dragState = {
+      el,
+      startX: e.clientX,
+      startY: e.clientY,
+      origLeft: rect.left,
+      origTop: rect.top,
+    };
+    el.classList.add("dragging");
+  }
+
+  private onDrag(e: MouseEvent) {
+    if (!this.dragState) return;
+    const { el, startX, startY, origLeft, origTop } = this.dragState;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    const parentRect = el.parentElement!.getBoundingClientRect();
+    el.style.left = origLeft + dx - parentRect.left + "px";
+    el.style.top = origTop + dy - parentRect.top + "px";
+  }
+
+  private applyResize(e: MouseEvent) {
+    if (!this.resizeState) return;
+    const { el, startX, startY, origW, origH } = this.resizeState;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    const newW = Math.max(180, origW + dx);
+    const newH = Math.max(120, origH + dy);
+    el.style.width = newW + "px";
+    el.style.height = newH + "px";
+  }
+
+  private endDrag() {
+    if (!this.dragState) return;
+    const { el } = this.dragState;
+    el.classList.remove("dragging");
+    this.saveDashboardLayout();
+    this.dragState = null;
+  }
+
+  private endResize() {
+    if (!this.resizeState) return;
+    const { el } = this.resizeState;
+    el.classList.remove("resizing");
+    this.saveDashboardLayout();
+    this.resizeState = null;
+  }
+
+  private saveDashboardLayout() {
+    const wrap = this.containerEl.querySelector(".workbench-container");
+    if (!wrap) return;
+    // 仅保存画布内卡片（排除子页固定面板）
+    const cards = wrap.querySelectorAll<HTMLElement>(
+      ".wb-widgets .wb-panel, .wb-widgets .wb-kpi-card, .wb-widgets .wb-chart"
+    );
+    const layout: Record<string, { x: number; y: number; w: number; h: number }> = {};
+    cards.forEach((el) => {
+      const id = el.dataset.id || `card-${Math.random()}`;
+      layout[id] = {
+        x: el.offsetLeft,
+        y: el.offsetTop,
+        w: el.offsetWidth,
+        h: el.offsetHeight,
+      };
+    });
+    this.plugin.settings.dashboardLayout = layout;
+    this.plugin.saveSettings();
+  }
+
+  /** 背景动效：气泡 + 海浪 + 罗盘 */
+  private buildEffects(container: HTMLElement) {
+    // 气泡
+    for (let i = 0; i < 12; i++) {
+      const b = container.createDiv({ cls: "wb-bubble" });
+      const size = 6 + Math.random() * 14;
+      b.style.width = size + "px";
+      b.style.height = size + "px";
+      b.style.left = Math.random() * 100 + "%";
+      b.style.animationDuration = 9 + Math.random() * 14 + "s";
+      b.style.animationDelay = -Math.random() * 20 + "s";
+    }
+    // 海浪
+    const waves = container.createDiv({ cls: "wb-waves" });
+    waves.innerHTML = `<svg viewBox="0 0 1440 120" preserveAspectRatio="none" style="width:100%;height:100%">
+      <path d="M0,60 C240,20 480,100 720,60 C960,20 1200,100 1440,60 L1440,120 L0,120 Z"/>
+      <path d="M0,80 C240,40 480,120 720,80 C960,40 1200,120 1440,80 L1440,120 L0,120 Z"/>
+      <path d="M0,100 C240,60 480,140 720,100 C960,60 1200,140 1440,100 L1440,120 L0,120 Z"/>
+    </svg>`;
+    // 罗盘（左下角，指针缓摆）
+    const compass = container.createDiv({ cls: "wb-compass" });
+    compass.innerHTML = `<svg viewBox="0 0 100 100" style="width:100%;height:100%">
+      <circle class="ring" cx="50" cy="50" r="46"/>
+      <circle class="ring2" cx="50" cy="50" r="38"/>
+      <g class="tick" stroke-width="1">
+        <line x1="50" y1="6" x2="50" y2="14"/>
+        <line x1="50" y1="86" x2="50" y2="94"/>
+        <line x1="6" y1="50" x2="14" y2="50"/>
+        <line x1="86" y1="50" x2="94" y2="50"/>
+      </g>
+      <g class="wb-compass-needle" style="transform-origin:50px 50px">
+        <polygon class="needle-n" points="50,16 56,52 50,58 44,52"/>
+        <polygon class="needle-s" points="50,84 56,48 50,42 44,48"/>
+      </g>
+      <circle class="hub" cx="50" cy="50" r="6"/>
+    </svg>`;
+    // 日月背景（右上角，随主题显示）
+    const sky = container.createDiv({ cls: "wb-sky" });
+    sky.innerHTML = `
+      <svg class="wb-moon" viewBox="0 0 72 72" style="width:100%;height:100%">
+        <circle cx="36" cy="36" r="16" fill="#f4e7c5" opacity=".9"/>
+        <circle cx="36" cy="36" r="24" fill="#f4e7c5" opacity=".15"/>
+      </svg>
+      <svg class="wb-sun" viewBox="0 0 72 72" style="width:100%;height:100%">
+        <circle cx="36" cy="36" r="14" fill="#fde68a" opacity=".9"/>
+        <circle cx="36" cy="36" r="22" fill="#fde68a" opacity=".2"/>
+      </svg>`;
+  }
+
+  /* ═══════════════════════════ 聚合页 ═══════════════════════════ */
+
+  private renderHome(container: HTMLElement) {
+    const d = this.data!;
+
+    // 顶栏
+    const topbar = container.createDiv({ cls: "wb-topbar" });
+    const title = topbar.createDiv({ cls: "wb-title" });
+    title.createSpan({ text: "🏴‍☠️ 草帽航海工作台" });
+    const tools = topbar.createDiv({ cls: "wb-tools" });
+    tools.createSpan({ text: "🔍 搜索" }).addEventListener("click", () => {
+      console.log("[workbench] search clicked");
+      // @ts-ignore
+      this.app.commands.executeCommandById("global-search:open");
+    });
+    tools.createSpan({ text: "➕ 新建" }).addEventListener("click", () => {
+      new AddWidgetModal(this.app, (widgetId) => this.addWidgetInstance(widgetId)).open();
+    });
+    tools.createSpan({ text: "⟳ 刷新" }).addEventListener("click", () => this.reload());
+    tools.createSpan({ text: "⚙ 设置" }).addEventListener("click", () => {
+      // @ts-ignore
+      this.app.setting.open();
+    });
+    // 色系切换按钮（切换 Obsidian 主题模式 class）
+    const themeBtn = tools.createSpan({ cls: "wb-theme-btn", text: "🌙/☀️" });
+    themeBtn.addEventListener("click", () => {
+      const isDark = document.body.classList.contains("theme-dark");
+      document.body.classList.toggle("theme-dark", !isDark);
+      document.body.classList.toggle("theme-light", isDark);
+    });
+
+    // widget 画布：按当前页组件列表渲染（自由布局由 initDashboardLayout 接管）
+    this.renderWidgetCanvas(container, "home");
+  }
+
+  /**
+   * 渲染 widget 画布：按页面组件列表渲染每个实例。
+   * 子页面（非 home）的卡片 data-id 加页面前缀，避免与首页布局 key 冲突。
+   * 无组件时返回 null（不创建空画布）。
+   */
+  private renderWidgetCanvas(container: HTMLElement, page: Page): HTMLElement | null {
+    const d = this.data!;
+    const active = this.getPageWidgets(page);
+    if (active.length === 0) return null;
+
+    const canvas = container.createDiv({ cls: "wb-widgets" });
+    const ctx: WidgetCtx = {
+      app: this.app,
+      plugin: this.plugin,
+      data: d,
+      instanceId: "",
+      widgetConfig: {},
+      sharedData: this.sharedData,
+      saveShared: () => {
+        saveSharedData(this.app, this.sharedData);
+      },
+      goto: (p) => this.goto(p as Page),
+      openFile: (path) => openFile(this.app, path),
+      fmtDate: (ts) => this.fmtDate(ts),
+      levelCls: (l) => this.levelCls(l),
+      habitData: () => this.habitData(),
+      saveHabitData: (data) => this.saveHabitData(data),
+      drawBarChart: (c, data) => this.drawBarChart(c, data),
+    };
+    const configs = this.plugin.settings.widgetConfigs || {};
+    const prefix = page === "home" ? "" : `${page}-`;
+    for (const instId of active) {
+      const [baseId, suffix] = instId.split("#");
+      const w = getWidget(baseId);
+      if (!w) continue;
+      // 跳过被禁用的实例（设置面板 Toggle 关闭）
+      const instCfg = configs[instId] || {};
+      if (instCfg.enabled === false) continue;
+      ctx.instanceId = instId;
+      ctx.widgetConfig = instCfg;
+      const host = canvas.createDiv({ cls: "wb-widget-host", attr: { "data-widget": instId } });
+      try {
+        w.render(ctx, host);
+        // 通用外观：自定义主色覆盖（widgetConfigs[instId].color，所有组件统一入口）
+        if (instCfg.color) {
+          host.querySelectorAll<HTMLElement>(".wb-panel, .wb-kpi-card, .wb-chart").forEach((el) => {
+            el.style.setProperty("--w-accent", String(instCfg.color));
+          });
+        }
+        // data-id：加页面前缀（子页面）+ 多实例后缀，保证布局持久化 key 唯一
+        host.querySelectorAll<HTMLElement>(".wb-panel, .wb-kpi-card, .wb-chart").forEach((el) => {
+          const base = el.dataset.id || (el.classList.contains("wb-kpi-card") ? "stat" : "card");
+          el.dataset.id = prefix + base + (suffix ? `-${suffix}` : "");
+        });
+      } catch (e) {
+        console.error(`[workbench] widget ${w.id} 渲染失败`, e);
+      }
+    }
+    return canvas;
+  }
+
+  /* ═══════════════════════════ 详情子页 ═══════════════════════════ */
+
+  private pageTitle(): string {
+    switch (this.page) {
+      case "domains": return "📚 知识领域";
+      case "wiki": return "🗺️ 概念库";
+      case "podcast": return "🎧 精选播客";
+      case "board": return "✅ 每日打卡";
+      case "config": return "⚙️ 系统配置";
+      case "news": return "📰 行业新闻";
+      case "stocks": return "📈 股票池";
+      case "topics": return "🎯 选题池";
+      default: return "工作台";
+    }
+  }
+
+  private renderPage(container: HTMLElement) {
+    const d = this.data!;
+    const page = container.createDiv({ cls: "wb-page" });
+
+    // 统一头部胶囊：标题在左，返回工作台在右（所有子页共用）
+    const header = page.createDiv({ cls: "wb-page-header" });
+    header.createDiv({ cls: "wb-page-title", text: this.pageTitle() });
+    const back = header.createSpan({ cls: "wb-back", text: "返回工作台" });
+    back.addEventListener("click", () => this.goto("home"));
+
+    switch (this.page) {
+      case "domains":
+        this.renderDomains(page, d);
+        break;
+      case "wiki":
+        this.renderWiki(page, d);
+        break;
+      case "podcast":
+        this.renderPodcast(page);
+        break;
+      case "board":
+        this.renderBoard(page, d);
+        break;
+      case "config":
+        this.renderConfig(page);
+        break;
+      case "news":
+        this.renderNews(page);
+        break;
+      case "stocks":
+        this.renderStocks(page);
+        break;
+      case "topics":
+        this.renderTopics(page);
+        break;
+    }
+  }
+
+  private renderDomains(page: HTMLElement, d: LoadedData) {
+
+    // 统计格
+    const due = dueCards(d.kcCards);
+    const statGrid = page.createDiv({ cls: "dash-stat-grid" });
+    const mkStat = (num: string, label: string) => {
+      const c = statGrid.createDiv({ cls: "dash-stat-cell" });
+      c.createDiv({ cls: "dash-stat-num", text: num });
+      c.createDiv({ cls: "dash-stat-label", text: label });
+    };
+    mkStat(String(d.kcCards.length), "知识卡片");
+    mkStat(String(d.stats.domains), "领域数");
+    mkStat(String(due.length), "到期复习");
+    mkStat("+" + d.stats.todayAdded, "今日新增");
+
+    // Tab：总览 / 按领域
+    const tabs = page.createDiv({ cls: "dash-tabs" });
+    const tabOverview = tabs.createEl("button", { cls: "dash-tab on", text: "📊 总览" });
+    const tabByDomain = tabs.createEl("button", { cls: "dash-tab", text: "📂 按领域" });
+    const content = page.createDiv({ cls: "dash-panel" });
+
+    const renderOverview = () => {
+      content.empty();
+
+      // 🎯 抽 5 张复习
+      const drawCard = content.createDiv({ cls: "dash-review-card" });
+      const drawMeta = drawCard.createDiv({ cls: "dash-meta" });
+      drawMeta.createSpan({ text: "🎯 抽 5 张复习" });
+      drawMeta.createSpan({ text: `${d.kcCards.length} 张可选` });
+      const drawBtn = drawCard.createEl("button", {
+        cls: "wb-add-btn",
+        text: "🎲 抽 5 张",
+        attr: { style: "margin-bottom:10px;" },
+      });
+      const drawResult = drawCard.createDiv();
+      const doDraw = () => {
+        drawResult.empty();
+        const pool = due.length >= 5 ? due : d.kcCards;
+        const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, 5);
+        if (shuffled.length === 0) {
+          drawResult.createDiv({ cls: "dash-empty", text: "暂无卡片可抽" });
+          return;
+        }
+        for (const c of shuffled) {
+          const row = drawResult.createDiv({ cls: "dash-kb-row" });
+          row.createSpan({ cls: "dash-badge " + this.levelCls(c.level), text: c.level });
+          row.createSpan({ cls: "dash-name", text: c.name });
+          row.createSpan({ cls: "dash-tag", text: c.review || (c.domain || "") });
+          row.addEventListener("click", () => {
+            const tf = this.app.vault.getAbstractFileByPath(c.path);
+            if (tf instanceof TFile) new CardContentModal(this.app, tf).open();
+          });
+        }
+      };
+      drawBtn.addEventListener("click", doDraw);
+      doDraw();
+
+      // 📊 月度新增趋势
+      const trendCard = content.createDiv({ cls: "dash-review-card" });
+      trendCard.createDiv({ cls: "dash-meta", text: "📊 月度新增趋势" });
+      const trendChart = trendCard.createDiv({ cls: "dash-month-chart" });
+      const monthMap = new Map<string, number>();
+      d.kcCards.forEach((c) => {
+        const d0 = new Date(c.mtime);
+        const key = `${d0.getMonth() + 1}月`;
+        monthMap.set(key, (monthMap.get(key) || 0) + 1);
+      });
+      const entries = [...monthMap.entries()].slice(-8);
+      const max = Math.max(...entries.map(([, v]) => v), 1);
+      entries.forEach(([label, v]) => {
+        const b = trendChart.createDiv({ cls: "dash-month-bar" });
+        b.createDiv({ cls: "dash-month-bar val", text: String(v) });
+        const fill = b.createDiv({ cls: "fill" });
+        fill.style.height = `${(v / max) * 100}%`;
+        b.createDiv({ cls: "dash-month-bar label", text: label });
+      });
+
+      // 🥧 领域分布饼图
+      const domains = groupByDomain(d.kcCards);
+      const pieCard = content.createDiv({ cls: "dash-review-card" });
+      pieCard.createDiv({ cls: "dash-meta", text: "🥧 领域分布" });
+      if (domains.size > 0) {
+        const pieWrap = pieCard.createDiv({
+          attr: { style: "display:flex;align-items:center;gap:16px;flex-wrap:wrap;" },
+        });
+        const total = d.kcCards.length || 1;
+        const colors = ["#fbbf24", "#8b5cf6", "#38bdf8", "#34d399", "#f472b6", "#f59e0b", "#e11d2e", "#22d3ee"];
+        let acc = 0;
+        const segs: string[] = [];
+        [...domains.entries()].forEach(([, cards], i) => {
+          const cnt = cards.length;
+          const from = (acc / total) * 360;
+          acc += cnt;
+          const to = (acc / total) * 360;
+          segs.push(`${colors[i % colors.length]} ${from.toFixed(1)}deg ${to.toFixed(1)}deg`);
+        });
+        const pie = pieWrap.createDiv({
+          attr: {
+            style: `width:110px;height:110px;border-radius:50%;flex-shrink:0;background:conic-gradient(${segs.join(",")});box-shadow:0 2px 8px rgba(0,0,0,.25);`,
+          },
+        });
+        const legend = pieWrap.createDiv({
+          attr: { style: "display:flex;flex-direction:column;gap:4px;font-size:12px;" },
+        });
+        [...domains.entries()].forEach(([name, cards], i) => {
+          const row = legend.createDiv({ attr: { style: "display:flex;align-items:center;gap:6px;" } });
+          row.createSpan({
+            attr: {
+              style: `width:10px;height:10px;border-radius:3px;background:${colors[i % colors.length]};flex-shrink:0;`,
+            },
+          });
+          row.createSpan({ text: `${name} ${cards.length}` });
+        });
+      } else {
+        pieCard.createDiv({ cls: "dash-empty", text: "暂无知识卡片" });
+      }
+
+      // 到期复习
+      if (due.length > 0) {
+        const card = content.createDiv({ cls: "dash-review-card" });
+        const meta = card.createDiv({ cls: "dash-meta" });
+        meta.createSpan({ text: "🔁 到期复习" });
+        meta.createSpan({ text: `${due.length} 张` });
+        for (const c of due.slice(0, 8)) {
+          const row = card.createDiv({ cls: "dash-kb-row" });
+          row.createSpan({ cls: "dash-badge " + this.levelCls(c.level), text: c.level });
+          row.createSpan({ cls: "dash-name", text: c.name });
+          row.createSpan({ cls: "dash-tag", text: c.review || "" });
+          row.addEventListener("click", () => {
+            const tf = this.app.vault.getAbstractFileByPath(c.path);
+            if (tf instanceof TFile) new CardContentModal(this.app, tf).open();
+          });
+        }
+      }
+    };
+
+    const renderByDomain = () => {
+      content.empty();
+      const domains = groupByDomain(d.kcCards);
+      const list = [...domains.entries()];
+      // 翻页：每页 3 个领域
+      const perPage = 3;
+      let pageNum = 0;
+      const pages = Math.max(1, Math.ceil(list.length / perPage));
+      const pagerWrap = content.createDiv();
+      const renderPage = () => {
+        pagerWrap.empty();
+        const slice = list.slice(pageNum * perPage, (pageNum + 1) * perPage);
+        for (const [name, cards] of slice) {
+          const card = pagerWrap.createDiv({ cls: "dash-review-card" });
+          const meta = card.createDiv({ cls: "dash-meta" });
+          meta.createSpan({ text: name });
+          meta.createSpan({ text: `${cards.length} 张` });
+          for (const c of cards.slice(0, 6)) {
+            const row = card.createDiv({ cls: "dash-kb-row" });
+            row.createSpan({ cls: "dash-badge " + this.levelCls(c.level), text: c.level });
+            row.createSpan({ cls: "dash-name", text: c.name });
+            row.addEventListener("click", () => {
+            const tf = this.app.vault.getAbstractFileByPath(c.path);
+            if (tf instanceof TFile) new CardContentModal(this.app, tf).open();
+          });
+          }
+          const indexFile = this.app.vault.getAbstractFileByPath(
+            `02 - Areas 领域/${name}/00_索引.md`
+          );
+          if (indexFile instanceof TFile) {
+            const row = card.createDiv({ cls: "dash-kb-row" });
+            row.createSpan({ cls: "dash-name", text: "📖 打开领域索引 →" });
+            row.addEventListener("click", () => new CardContentModal(this.app, indexFile).open());
+          }
+        }
+        // 翻页器
+        if (pages > 1) {
+          const pager = pagerWrap.createDiv({ cls: "dash-pager" });
+          const prev = pager.createEl("button", { text: "‹ 上一页" });
+          const info = pager.createSpan({ cls: "dash-page-info", text: `${pageNum + 1} / ${pages}` });
+          const next = pager.createEl("button", { text: "下一页 ›" });
+          prev.addEventListener("click", () => {
+            pageNum = Math.max(0, pageNum - 1);
+            renderPage();
+          });
+          next.addEventListener("click", () => {
+            pageNum = Math.min(pages - 1, pageNum + 1);
+            renderPage();
+          });
+        }
+      };
+      renderPage();
+    };
+
+    tabOverview.addEventListener("click", () => {
+      tabOverview.addClass("on");
+      tabByDomain.removeClass("on");
+      renderOverview();
+    });
+    tabByDomain.addEventListener("click", () => {
+      tabByDomain.addClass("on");
+      tabOverview.removeClass("on");
+      renderByDomain();
+    });
+    renderOverview();
+  }
+
+  private renderWiki(page: HTMLElement, d: LoadedData) {
+
+    // 概念入口卡片
+    const links: [string, string][] = [
+      ["👤 个人画像", "05 - Wikis 概念库/个人画像/00_个人画像.md"],
+      ["📈 迭代线追踪", "05 - Wikis 概念库/迭代线追踪"],
+    ];
+    const linkCard = page.createDiv({ cls: "dash-review-card" });
+    linkCard.createDiv({ cls: "dash-meta", text: "📚 概念入口" });
+    for (const [label, path] of links) {
+      const row = linkCard.createDiv({ cls: "dash-kb-row" });
+      row.createSpan({ cls: "dash-name", text: label });
+      row.addEventListener("click", () => {
+        const f = this.app.vault.getAbstractFileByPath(path);
+        if (f instanceof TFile) openFile(this.app, f.path);
+        else new Notice(`未找到：${path}`);
+      });
+    }
+
+    // 项目目标卡片
+    const g = page.createDiv({ cls: "dash-review-card" });
+    g.createDiv({ cls: "dash-meta", text: "🎯 项目目标" });
+    for (const pr of d.projects) {
+      const row = g.createDiv({ cls: "dash-kb-row" });
+      row.createSpan({ cls: "dash-name", text: `${pr.name} · 进度 ${pr.progress}%` });
+      const bar = g.createDiv({ cls: "dash-bar" });
+      const fill = bar.createEl("i", { cls: "bar-tpl" });
+      fill.style.width = pr.progress + "%";
+      fill.createSpan({ cls: "bar-pct", text: `${pr.progress}%` });
+      if (pr.nextStep) {
+        const nextRow = g.createDiv({ cls: "dash-kb-row" });
+        nextRow.createSpan({ cls: "dash-name", text: `⏭ 下一步：${pr.nextStep}` });
+      }
+    }
+  }
+
+  private renderPodcast(page: HTMLElement) {
+
+    const habits = buildHabitRecords(this.habitData());
+    const habit = habits.find((h) => h.name.includes("播客")) || habits[0];
+    const days = habit?.days || [];
+
+    // 收听统计格
+    const statGrid = page.createDiv({ cls: "dash-stat-grid" });
+    const mkStat = (num: string, label: string) => {
+      const c = statGrid.createDiv({ cls: "dash-stat-cell" });
+      c.createDiv({ cls: "dash-stat-num", text: num });
+      c.createDiv({ cls: "dash-stat-label", text: label });
+    };
+    mkStat(String(habit?.streak || 0), "🔥 连续收听");
+    mkStat(String(days.length), "累计收听");
+    mkStat(String(habit?.today ? "已听" : "待听"), "今日状态");
+    mkStat(String(habits.length), "打卡习惯");
+
+    // 全部语音（扫描 vault 音频）
+    const audioFiles = this.app.vault
+      .getFiles()
+      .filter((f) => ["mp3", "m4a", "wav", "flac", "ogg", "m4b"].includes(f.extension))
+      .sort((a, b) => b.stat.mtime - a.stat.mtime)
+      .slice(0, 50);
+
+    // ── 内嵌播放器卡片 ──
+    const playerCard = page.createDiv({ cls: "dash-review-card" });
+    playerCard.createDiv({ cls: "dash-meta", text: "🎧 播放器" });
+    const nowTitle = playerCard.createDiv({
+      cls: "dash-pool-title",
+      text: audioFiles.length ? audioFiles[0].basename : "库中暂无音频",
+      attr: { style: "text-align:center;font-size:15px;margin:6px 0;" },
+    });
+    const audio = new Audio();
+
+    // 进度条 + 时间
+    const seekRow = playerCard.createDiv({
+      attr: { style: "display:flex;align-items:center;gap:8px;margin:8px 0;" },
+    });
+    const seek = seekRow.createEl("input", {
+      attr: { type: "range", min: "0", max: "100", value: "0" },
+    });
+    seek.style.flex = "1";
+    const posLabel = seekRow.createSpan({
+      text: "00:00",
+      attr: { style: "font-size:11px;font-family:var(--wb-mono);color:var(--wb-sub);min-width:38px;text-align:right;" },
+    });
+    const durLabel = seekRow.createSpan({
+      text: "/ 00:00",
+      attr: { style: "font-size:11px;font-family:var(--wb-mono);color:var(--wb-sub);min-width:46px;" },
+    });
+
+    const fmt = (s: number) =>
+      `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+    audio.addEventListener("timeupdate", () => {
+      if (audio.duration) {
+        seek.value = String((audio.currentTime / audio.duration) * 100);
+        posLabel.setText(fmt(audio.currentTime));
+      }
+    });
+    audio.addEventListener("loadedmetadata", () => {
+      durLabel.setText("/ " + fmt(audio.duration || 0));
+    });
+    audio.addEventListener("ended", nextTrack);
+
+    let currentIdx = 0;
+    const playTrack = (idx: number) => {
+      const f = audioFiles[idx];
+      if (!f) return;
+      currentIdx = idx;
+      nowTitle.setText(f.basename);
+      audio.src = this.app.vault.getResourcePath(f);
+      audio.play().catch(() => {});
+      playBtn.setText("⏸");
+    };
+    function nextTrack() {
+      playTrack((currentIdx + 1) % Math.max(1, audioFiles.length));
+    }
+
+    seek.addEventListener("input", () => {
+      if (audio.duration) audio.currentTime = (parseFloat(seek.value) / 100) * audio.duration;
+    });
+
+    // 控制条
+    const controls = playerCard.createDiv({ cls: "dash-timer-controls" });
+    const prevBtn = controls.createEl("button", { text: "⏮" });
+    const playBtn = controls.createEl("button", { text: "▶" });
+    const nextBtn = controls.createEl("button", { text: "⏭" });
+    prevBtn.addEventListener("click", () => playTrack((currentIdx - 1 + audioFiles.length) % Math.max(1, audioFiles.length)));
+    playBtn.addEventListener("click", () => {
+      if (audio.paused) {
+        if (!audio.src) playTrack(currentIdx);
+        audio.play().catch(() => {});
+        playBtn.setText("⏸");
+      } else {
+        audio.pause();
+        playBtn.setText("▶");
+      }
+    });
+    nextBtn.addEventListener("click", nextTrack);
+
+    // 倍速
+    const rateRow = playerCard.createDiv({ cls: "dash-timer-options" });
+    const rates = [0.75, 1, 1.25, 1.5, 2];
+    rates.forEach((r) => {
+      const b = rateRow.createEl("button", { text: `${r}x`, cls: r === 1 ? "on" : "" });
+      b.addEventListener("click", () => {
+        audio.playbackRate = r;
+        rateRow.querySelectorAll("button").forEach((el) => el.removeClass("on"));
+        b.addClass("on");
+      });
+    });
+
+    // 近 30 天收听热力图
+    const heatCard = page.createDiv({ cls: "dash-review-card" });
+    const heatMeta = heatCard.createDiv({ cls: "dash-meta" });
+    heatMeta.createSpan({ text: "🔥 近 30 天收听" });
+    heatMeta.createSpan({ text: habit?.name || "播客" });
+    const heat = heatCard.createDiv({ cls: "dash-heat-grid" });
+    lastNDays(days, 30).forEach((on, i) => {
+      heat.createDiv({ cls: "dash-heat-cell" + (on ? " on " + this.heatLevel(i) : "") });
+    });
+
+    // 全部语音列表
+    const audioCard = page.createDiv({ cls: "dash-review-card" });
+    audioCard.createDiv({ cls: "dash-meta", text: "🗂 全部语音" });
+    if (audioFiles.length === 0) {
+      audioCard.createDiv({ cls: "dash-empty", text: "库中暂无音频文件 🎧" });
+    } else {
+      const list = audioCard.createDiv({ cls: "dash-list" });
+      audioFiles.forEach((f, i) => {
+        const item = list.createDiv({ cls: "dash-item" });
+        item.createSpan({ cls: "dash-item-num", text: String(i + 1) });
+        const main = item.createDiv({ cls: "dash-item-main" });
+        main.createDiv({ cls: "dash-item-title", text: f.basename });
+        main.createDiv({ cls: "dash-item-sub", text: this.fmtDate(f.stat.mtime) + " · " + (f.path.split("/").slice(0, -1).join("/") || "根目录") });
+        item.addEventListener("click", () => playTrack(i));
+      });
+    }
+
+    // 今日收听打卡
+    const btnRow = page.createDiv({ attr: { style: "display:flex;gap:10px;margin-top:12px;" } });
+    const checkBtn = btnRow.createEl("button", {
+      cls: "dash-timer-controls",
+      text: habit?.today ? "✅ 今日已收听（点击取消）" : "⬜ 今日收听打卡",
+      attr: { style: "padding:10px 24px;" },
+    });
+    checkBtn.addEventListener("click", () => {
+      const data = this.habitData();
+      const name = habit?.name || "播客";
+      toggleHabit(data, name);
+      this.saveHabitData(data);
+      new Notice(habit?.today ? "已取消今日打卡" : "收听打卡成功！🎧");
+      this.render();
+    });
+  }
+
+  private renderBoard(page: HTMLElement, d: LoadedData) {
+
+    const habits = buildHabitRecords(this.habitData());
+    const habit = habits[0];
+    const days = habit?.days || [];
+
+    // 今日累计（从共享数据 workoutSessions 统计今日分钟）
+    const sessions = this.sharedData.workoutSessions || [];
+    const todayKey = (() => {
+      const n = new Date();
+      return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+    })();
+    const todaySessions = sessions.filter((s) => s.date === todayKey);
+    const todayMin = todaySessions.reduce((acc, s) => acc + s.min, 0);
+
+    // 累计统计格
+    const statGrid = page.createDiv({ cls: "dash-stat-grid" });
+    const mkStat = (num: string, label: string) => {
+      const c = statGrid.createDiv({ cls: "dash-stat-cell" });
+      c.createDiv({ cls: "dash-stat-num", text: num });
+      c.createDiv({ cls: "dash-stat-label", text: label });
+    };
+    mkStat(String(habit?.streak || 0), "🔥 连续打卡");
+    mkStat(String(habit?.today ? "已打卡" : "待打卡"), "今日状态");
+    mkStat(`${todaySessions.length} 组`, "今日累计");
+    mkStat(`${todayMin} 分钟`, "今日时长");
+
+    // ⏱️ 时长倒计时（跟练计时器）
+    const timerCard = page.createDiv({ cls: "dash-review-card" });
+    timerCard.createDiv({ cls: "dash-meta", text: "⏱️ 跟练计时器" });
+
+    // 时长选项
+    const durations = [5, 15, 30, 45, 60];
+    let selectedMin = 15;
+    const optRow = timerCard.createDiv({ cls: "dash-timer-options" });
+    const optBtns: HTMLButtonElement[] = [];
+    durations.forEach((m) => {
+      const b = optRow.createEl("button", {
+        text: `${m} 分`,
+        cls: m === selectedMin ? "on" : "",
+      });
+      optBtns.push(b);
+      b.addEventListener("click", () => {
+        if (timerRunning) return;
+        selectedMin = m;
+        optBtns.forEach((ob) => ob.removeClass("on"));
+        b.addClass("on");
+        display.setText(fmt(selectedMin * 60));
+      });
+    });
+
+    const fmt = (sec: number) =>
+      `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+    const display = timerCard.createDiv({ cls: "dash-timer-big", text: fmt(selectedMin * 60) });
+    const state = timerCard.createDiv({
+      attr: { style: "text-align:center;font-size:12px;color:var(--wb-sub);" },
+      text: "未开始",
+    });
+
+    let timerHandle: number | null = null;
+    let remainingSec = selectedMin * 60;
+    let timerRunning = false;
+
+    const saveWorkout = () => {
+      const all = [...(this.sharedData.workoutSessions || [])];
+      all.push({ date: todayKey, min: selectedMin });
+      this.sharedData.workoutSessions = all;
+      saveSharedData(this.app, this.sharedData);
+      new Notice(`✓ 完成 ${selectedMin} 分钟跟练`);
+      this.render();
+    };
+
+    const tick = () => {
+      remainingSec--;
+      display.setText(fmt(Math.max(0, remainingSec)));
+      state.setText(`进行中 · 还剩 ${remainingSec} 秒`);
+      if (remainingSec <= 0) {
+        if (timerHandle) window.clearInterval(timerHandle);
+        timerHandle = null;
+        timerRunning = false;
+        saveWorkout();
+      }
+    };
+
+    const startBtn = timerCard.createDiv({ cls: "dash-timer-controls" });
+    const playBtn = startBtn.createEl("button", { text: "▶ 开始" });
+    const stopBtn = startBtn.createEl("button", {
+      text: "放弃",
+      attr: { style: "background:var(--background-modifier-form-field);color:#f87171;" },
+    });
+    stopBtn.style.display = "none";
+
+    playBtn.addEventListener("click", () => {
+      if (timerRunning) return;
+      timerRunning = true;
+      playBtn.style.display = "none";
+      stopBtn.style.display = "";
+      remainingSec = selectedMin * 60;
+      timerHandle = window.setInterval(tick, 1000);
+    });
+    stopBtn.addEventListener("click", () => {
+      if (timerHandle) window.clearInterval(timerHandle);
+      timerHandle = null;
+      timerRunning = false;
+      playBtn.style.display = "";
+      stopBtn.style.display = "none";
+      display.setText(fmt(selectedMin * 60));
+      state.setText("未开始");
+    });
+
+    // 30 天热力图
+    const heatCard = page.createDiv({ cls: "dash-review-card" });
+    const heatMeta = heatCard.createDiv({ cls: "dash-meta" });
+    heatMeta.createSpan({ text: "🔥 最近 30 天" });
+    heatMeta.createSpan({ text: habit?.name || "打卡" });
+    const heat = heatCard.createDiv({ cls: "dash-heat-grid" });
+    lastNDays(days, 30).forEach((on, i) => {
+      heat.createDiv({ cls: "dash-heat-cell" + (on ? " on " + this.heatLevel(i) : "") });
+    });
+
+    // 本周柱状图（近 7 天打卡次数）
+    const weekCard = page.createDiv({ cls: "dash-review-card" });
+    weekCard.createDiv({ cls: "dash-meta", text: "📅 本周" });
+    const chart = weekCard.createDiv({ cls: "dash-month-chart" });
+    const last7 = lastNDays(days, 7);
+    const weekDays = ["日", "一", "二", "三", "四", "五", "六"];
+    const todayDow = new Date().getDay();
+    for (let i = 6; i >= 0; i--) {
+      const dow = (todayDow - i + 7) % 7;
+      const on = last7[6 - i];
+      const b = chart.createDiv({ cls: "dash-month-bar" });
+      b.createDiv({ cls: "dash-month-bar val", text: on ? "✓" : "" });
+      const fill = b.createDiv({ cls: "fill" });
+      fill.style.height = on ? "100%" : "8%";
+      b.createDiv({ cls: "dash-month-bar label", text: weekDays[dow] });
+    }
+
+    // 今日打卡按钮
+    const btnRow = page.createDiv({ attr: { style: "display:flex;gap:10px;margin-top:12px;" } });
+    const checkBtn = btnRow.createEl("button", {
+      cls: "dash-timer-controls",
+      text: habit?.today ? "✅ 今日已打卡（点击取消）" : "⬜ 点击今日打卡",
+      attr: { style: "padding:10px 24px;" },
+    });
+    checkBtn.addEventListener("click", () => {
+      const data = this.habitData();
+      const name = habit?.name || "打卡";
+      toggleHabit(data, name);
+      this.saveHabitData(data);
+      new Notice(habit?.today ? "已取消今日打卡" : "打卡成功！🔥");
+      this.render();
+    });
+  }
+
+  private renderConfig(page: HTMLElement) {
+    // ── 🚀 知识库工作台快捷入口 ──
+    const entryCard = page.createDiv({ cls: "dash-review-card" });
+    const entryMeta = entryCard.createDiv({ cls: "dash-meta" });
+    entryMeta.createSpan({ text: "🚀 知识库工作台" });
+    const entryBtn = entryCard.createDiv({
+      cls: "dash-timer-controls",
+      attr: { style: "justify-content:center;" },
+    });
+    const openDashboard = entryBtn.createEl("button", {
+      text: "📊 打开工作台 Dashboard",
+      attr: { style: "padding:10px 28px;font-size:15px;" },
+    });
+    openDashboard.addEventListener("click", () => {
+      // 弹出 Obsidian 设置窗口并定位到知识库工作台插件设置 Tab（组件管理面板）
+      try {
+        const setting = (this.app as unknown as {
+          setting: {
+            open(): void;
+            openTabById?(id: string): void;
+            tabs: { id?: string; name?: string }[];
+            pluginTabs: { id?: string; name?: string }[];
+            openTab(t: { id?: string }): void;
+          };
+        }).setting;
+        setting.open();
+        // 优先：Obsidian 内置按 id 打开 Tab
+        if (typeof setting.openTabById === "function") {
+          setting.openTabById("knowledge-workbench");
+        } else {
+          // 兜底：遍历 tabs + pluginTabs 找到插件设置 Tab
+          const tab = [...setting.tabs, ...setting.pluginTabs].find(
+            (t) => t.id === "knowledge-workbench" || t.name === "知识库工作台"
+          );
+          if (tab) setting.openTab(tab);
+        }
+      } catch (e) {
+        console.error("[workbench] 打开设置面板失败", e);
+      }
+    });
+
+    // ── 🎨 主题外观 ──
+    const themeCard = page.createDiv({ cls: "dash-review-card" });
+    themeCard.createDiv({ cls: "dash-meta", text: "🎨 主题外观" });
+    themeCard.createDiv({
+      attr: { style: "font-size:12px;color:var(--wb-sub);margin:4px 0 10px;" },
+      text: "深色模式适合夜间使用 · 跟随系统会随设备自动切换",
+    });
+    const themeTabs = themeCard.createDiv({ cls: "dash-tabs" });
+    const themes: { id: string; icon: string; label: string }[] = [
+      { id: "light", icon: "☀️", label: "浅色" },
+      { id: "dark", icon: "🌙", label: "深色" },
+      { id: "auto", icon: "🔄", label: "跟随系统" },
+    ];
+    const isDark = () => document.body.classList.contains("theme-dark");
+    const currentTheme = () => this.plugin.settings.themeMode || (isDark() ? "dark" : "light");
+    themes.forEach((t) => {
+      const b = themeTabs.createEl("button", {
+        cls: "dash-tab" + (currentTheme() === t.id ? " on" : ""),
+        text: `${t.icon} ${t.label}`,
+      });
+      b.addEventListener("click", () => {
+        this.plugin.settings.themeMode = t.id;
+        this.plugin.saveSettings();
+        themeTabs.querySelectorAll(".dash-tab").forEach((el) => el.removeClass("on"));
+        b.addClass("on");
+        // Obsidian 标准 baseTheme 值：light / dark / system
+        const applyBase = (v: string) => {
+          try {
+            // @ts-ignore
+            this.app.vault.setConfig("baseTheme", v);
+          } catch (e) {
+            console.error("[workbench] 设置 baseTheme 失败", e);
+          }
+        };
+        const applyBody = (dark: boolean) => {
+          document.body.classList.toggle("theme-dark", dark);
+          document.body.classList.toggle("theme-light", !dark);
+        };
+        if (t.id === "light") {
+          applyBase("light");
+          applyBody(false);
+        } else if (t.id === "dark") {
+          applyBase("dark");
+          applyBody(true);
+        } else {
+          const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          applyBase("system");
+          applyBody(dark);
+        }
+      });
+    });
+
+    // ── 💾 数据备份 ──
+    const backupCard = page.createDiv({ cls: "dash-review-card" });
+    backupCard.createDiv({ cls: "dash-meta", text: "💾 数据备份" });
+    backupCard.createDiv({
+      attr: { style: "font-size:12px;color:var(--wb-sub);margin:4px 0 10px;line-height:1.5;" },
+      text: "你的所有数据都存放在本地 vault 与浏览器中。换设备、清理数据前，记得先导出备份。",
+    });
+    const backupRow = backupCard.createDiv({
+      attr: { style: "display:flex;gap:10px;margin-bottom:6px;" },
+    });
+    const exportBtn = backupRow.createEl("button", {
+      cls: "wb-add-btn",
+      text: "📤 导出备份",
+      attr: { style: "padding:8px 18px;" },
+    });
+    const importBtn = backupRow.createEl("button", {
+      cls: "wb-add-btn",
+      text: "📥 恢复备份",
+      attr: { style: "padding:8px 18px;background:var(--background-modifier-form-field);color:var(--text-normal);" },
+    });
+    const backupInfo = backupCard.createDiv({
+      cls: "dash-empty",
+      attr: { style: "padding:6px;font-size:11px;text-align:left;" },
+      text: "",
+    });
+
+    exportBtn.addEventListener("click", async () => {
+      const shared = await loadSharedData(this.app);
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        plugin: this.plugin.settings,
+        shared: shared,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `知识库工作台备份-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      backupInfo.setText("✓ 已导出备份（含插件设置 + 共享数据）");
+    });
+
+    importBtn.addEventListener("click", () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".json";
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          if (data.plugin) {
+            this.plugin.settings = { ...this.plugin.settings, ...data.plugin };
+            await this.plugin.saveSettings();
+          }
+          if (data.shared) {
+            await saveSharedData(this.app, data.shared as SharedData);
+            this.sharedData = data.shared as SharedData;
+          }
+          backupInfo.setText("✓ 备份已恢复，正在刷新…");
+          new Notice("✅ 备份恢复成功");
+          this.reload();
+        } catch (e) {
+          console.error(e);
+          backupInfo.setText("❌ 恢复失败：文件格式不正确");
+        }
+      };
+      input.click();
+    });
+
+    // ── ⚠️ 危险操作 ──
+    const dangerCard = page.createDiv({ cls: "dash-review-card" });
+    dangerCard.createDiv({ cls: "dash-meta", text: "⚠️ 危险操作" });
+    const wipeBtn = dangerCard.createEl("button", {
+      cls: "wb-add-btn",
+      text: "🧹 清空所有数据",
+      attr: { style: "padding:8px 18px;background:#7f1d1d;color:#fecaca;border:1px solid #b91c1c;" },
+    });
+    dangerCard.createDiv({
+      attr: { style: "font-size:12px;color:var(--wb-sub);margin-top:8px;" },
+      text: "清空前请确认已经导出过备份，这个操作无法撤销。",
+    });
+    wipeBtn.addEventListener("click", async () => {
+      const ok = confirm("确定清空所有数据？此操作无法撤销！");
+      if (!ok) return;
+      this.plugin.settings = {
+        ...this.plugin.settings,
+        habits: defaultHabits(),
+        dashboardLayout: {},
+        activeWidgets: WIDGETS.map((w) => w.id),
+        widgetConfigs: {},
+        pageWidgets: {},
+        maskedHeadingConfig: {},
+      };
+      await this.plugin.saveSettings();
+      await saveSharedData(this.app, defaultSharedData());
+      this.sharedData = defaultSharedData();
+      new Notice("已清空所有数据");
+      this.reload();
+    });
+
+    // ── 📚 系统引导 ──
+    const guideCard = page.createDiv({ cls: "dash-review-card" });
+    guideCard.createDiv({ cls: "dash-meta", text: "📚 系统引导" });
+    const guideRows: [string, string][] = [
+      ["📄 系统引导 CLAUDE.md", "CLAUDE.md"],
+      ["📖 知识库流程规则手册", "03 - Resources 参考资料/知识库流程规则手册.md"],
+      ["🎴 复习面板", "03 - Resources 参考资料/Dashboard/复习面板.md"],
+      ["🏠 总览面板", "03 - Resources 参考资料/Dashboard/总览面板.md"],
+    ];
+    for (const [label, path] of guideRows) {
+      const row = guideCard.createDiv({ cls: "dash-kb-row" });
+      row.createSpan({ cls: "dash-name", text: label });
+      row.addEventListener("click", () => {
+        const f = this.app.vault.getAbstractFileByPath(
+          this.plugin.settings.knowledgeBasePath
+            ? `${this.plugin.settings.knowledgeBasePath}/${path}`
+            : path
+        );
+        if (f instanceof TFile) openFile(this.app, f.path);
+        else new Notice(`未找到：${path}`);
+      });
+    }
+
+    // ── ⌨️ 快捷键卡片 ──
+    const card2 = page.createDiv({ cls: "dash-review-card" });
+    card2.createDiv({ cls: "dash-meta", text: "⌨️ 快捷键" });
+    const shortcuts: [string, string][] = [
+      ["命令面板", "Ctrl+P"],
+      ["快速切换", "Ctrl+O"],
+      ["全局搜索", "Ctrl+Shift+F"],
+      ["图谱", "Ctrl+G"],
+    ];
+    for (const [name, key] of shortcuts) {
+      const row = card2.createDiv({ cls: "dash-kb-row" });
+      row.createSpan({ cls: "dash-name", text: name });
+      row.createSpan({ cls: "dash-tag gold", text: key });
+    }
+  }
+
+  /** 按关键词扫描笔记（文件名/路径匹配），渲染为列表页 */
+  private renderKeywordList(page: HTMLElement, title: string, keywords: string[]) {
+    page.createDiv({ cls: "wb-page-title", text: title });
+    const base = this.plugin.settings.knowledgeBasePath;
+    const files = this.app.vault.getMarkdownFiles().filter((f) => {
+      if (base && !f.path.startsWith(base)) return false;
+      const name = f.basename + " " + f.path;
+      return keywords.some((k) => name.includes(k));
+    });
+    const sorted = files.sort((a, b) => b.stat.mtime - a.stat.mtime);
+    const p = page.createDiv({ cls: "wb-panel" });
+    const hd = p.createDiv({ cls: "wb-hd" });
+    hd.createSpan({ text: title });
+    hd.createSpan({ cls: "wb-more", text: `${sorted.length} 篇` });
+    const bd = p.createDiv({ cls: "wb-bd" });
+    if (sorted.length === 0) {
+      bd.createDiv({ cls: "wb-empty", text: "暂无内容，可在笔记标题中加入关键词" });
+      return;
+    }
+    for (const f of sorted.slice(0, 30)) {
+      const row = bd.createDiv({ cls: "wb-row" });
+      row.createSpan({ cls: "wb-name", text: f.basename });
+      row.createSpan({ cls: "wb-meta", text: this.fmtDate(f.stat.mtime) });
+      row.addEventListener("click", () => openFile(this.app, f.path));
+    }
+  }
+
+  private renderNews(page: HTMLElement) {
+
+    const groups: { label: string; icon: string; keywords: string[] }[] = [
+      { label: "全部", icon: "🗞️", keywords: ["新闻", "News", "行业", "日报"] },
+      { label: "AI", icon: "🤖", keywords: ["AI", "人工智能", "大模型", "GPT"] },
+      { label: "财经", icon: "💰", keywords: ["财经", "经济", "宏观", "行情"] },
+      { label: "科技", icon: "🔬", keywords: ["科技", "芯片", "半导体", "数码"] },
+    ];
+
+    const base = this.plugin.settings.knowledgeBasePath;
+    const allFiles = this.app.vault.getMarkdownFiles().filter((f) => {
+      if (base && !f.path.startsWith(base)) return false;
+      return true;
+    });
+
+    const tabs = page.createDiv({ cls: "dash-tabs" });
+    const listWrap = page.createDiv();
+
+    const renderGroup = (keywords: string[]) => {
+      listWrap.empty();
+      const sorted = allFiles
+        .filter((f) => {
+          const name = f.basename + " " + f.path;
+          return keywords.some((k) => name.includes(k));
+        })
+        .sort((a, b) => b.stat.mtime - a.stat.mtime);
+
+      if (sorted.length === 0) {
+        listWrap.createDiv({ cls: "dash-empty", text: "暂无内容，可在笔记标题中加入关键词" });
+        return;
+      }
+      const list = listWrap.createDiv({ cls: "dash-list" });
+      sorted.slice(0, 30).forEach((f, i) => {
+        const item = list.createDiv({ cls: "dash-item" });
+        item.createSpan({ cls: "dash-item-num", text: String(i + 1) });
+        const main = item.createDiv({ cls: "dash-item-main" });
+        main.createDiv({ cls: "dash-item-title", text: f.basename });
+        main.createDiv({ cls: "dash-item-sub", text: this.fmtDate(f.stat.mtime) + " · " + (f.path.split("/")[0] || "根目录") });
+        item.addEventListener("click", () => openFile(this.app, f.path));
+      });
+    };
+
+    groups.forEach((g, i) => {
+      const t = tabs.createEl("button", {
+        cls: "dash-tab" + (i === 0 ? " on" : ""),
+        text: `${g.icon} ${g.label}`,
+      });
+      t.addEventListener("click", () => {
+        tabs.querySelectorAll(".dash-tab").forEach((el) => el.removeClass("on"));
+        t.addClass("on");
+        renderGroup(g.keywords);
+      });
+    });
+    renderGroup(groups[0].keywords);
+  }
+
+  private renderStocks(page: HTMLElement) {
+
+    const pool = this.sharedData.stockPool || [];
+    const save = () => {
+      this.sharedData.stockPool = pool;
+      saveSharedData(this.app, this.sharedData);
+    };
+
+    const renderList = () => {
+      listEl.empty();
+      if (pool.length === 0) {
+        listEl.createDiv({ cls: "dash-empty", text: "暂无股票，加入第一只吧 📈" });
+        return;
+      }
+      pool.forEach((s, i) => {
+        const item = listEl.createDiv({ cls: "dash-pool-item" });
+        const main = item.createDiv({ cls: "dash-pool-main" });
+        main.createDiv({ cls: "dash-pool-title", text: `${s.name} ${s.code ? "(" + s.code + ")" : ""}` });
+        const tags = main.createDiv({ cls: "dash-pool-tags" });
+        if (s.tag) tags.createSpan({ cls: "dash-tag", text: s.tag });
+        if (s.status) tags.createSpan({ cls: "dash-tag gold", text: s.status });
+        if (s.driver) tags.createSpan({ cls: "dash-tag purple", text: s.driver });
+        if (s.horizon) tags.createSpan({ cls: "dash-tag green", text: s.horizon });
+        if (s.position) tags.createSpan({ cls: "dash-tag red", text: s.position });
+        const actions = item.createDiv({ cls: "dash-pool-actions" });
+        const edit = actions.createEl("button", { text: "编辑" });
+        edit.addEventListener("click", () => {
+          // 填充表单并切到编辑模式
+          editingIdx = i;
+          codeIn.value = s.code || "";
+          nameIn.value = s.name || "";
+          tagIn.value = s.tag || "";
+          statusSel.value = s.status || "观察";
+          driverSel.value = s.driver || "";
+          horizonSel.value = s.horizon || "";
+          positionSel.value = s.position || "";
+          addBtn.setText("💾 保存修改");
+          form.scrollIntoView({ block: "nearest", behavior: "instant" });
+        });
+        const del = actions.createEl("button", { text: "删除", cls: "del" });
+        del.addEventListener("click", () => {
+          pool.splice(i, 1);
+          save();
+          renderList();
+        });
+      });
+    };
+
+    // 添加/编辑表单
+    let editingIdx = -1;
+    const form = page.createDiv({ cls: "dash-form" });
+    const codeIn = form.createEl("input", { attr: { placeholder: "代码" } });
+    const nameIn = form.createEl("input", { attr: { placeholder: "名称（必填）" } });
+    const tagIn = form.createEl("input", { attr: { placeholder: "行业/题材" } });
+    const statusSel = form.createEl("select");
+    ["观察", "已买", "已卖"].forEach((o) => statusSel.createEl("option", { text: o }));
+    const driverSel = form.createEl("select");
+    ["", "政策导向", "事件题材", "基本面逻辑", "技术支撑"].forEach((o) =>
+      driverSel.createEl("option", { text: o || "驱动类型" })
+    );
+    const horizonSel = form.createEl("select");
+    ["", "短线", "波段", "中线", "长线"].forEach((o) =>
+      horizonSel.createEl("option", { text: o || "时间敏感度" })
+    );
+    const positionSel = form.createEl("select");
+    ["", "轻仓", "标准", "重点"].forEach((o) =>
+      positionSel.createEl("option", { text: o || "仓位档" })
+    );
+    const addBtn = form.createEl("button", { text: "➕ 加入" });
+    addBtn.addEventListener("click", () => {
+      const name = nameIn.value.trim();
+      if (!name) return;
+      const data = {
+        code: codeIn.value.trim(),
+        name,
+        tag: tagIn.value.trim(),
+        status: statusSel.value,
+        driver: driverSel.value,
+        horizon: horizonSel.value,
+        position: positionSel.value,
+      };
+      if (editingIdx >= 0 && editingIdx < pool.length) {
+        pool[editingIdx] = data;
+        editingIdx = -1;
+        addBtn.setText("➕ 加入");
+      } else {
+        pool.push(data);
+      }
+      save();
+      codeIn.value = nameIn.value = tagIn.value = "";
+      driverSel.value = horizonSel.value = positionSel.value = "";
+      renderList();
+    });
+
+    const listEl = page.createDiv();
+    renderList();
+  }
+
+  private renderTopics(page: HTMLElement) {
+
+    const pool = this.sharedData.topicPool || [];
+    const save = () => {
+      this.sharedData.topicPool = pool;
+      saveSharedData(this.app, this.sharedData);
+    };
+
+    const renderList = () => {
+      listEl.empty();
+      if (pool.length === 0) {
+        listEl.createDiv({ cls: "dash-empty", text: "暂无选题，添加第一个吧 🎯" });
+        return;
+      }
+      pool.forEach((s, i) => {
+        const item = listEl.createDiv({ cls: "dash-pool-item" });
+        const main = item.createDiv({ cls: "dash-pool-main" });
+        main.createDiv({ cls: "dash-pool-title", text: s.title });
+        const tags = main.createDiv({ cls: "dash-pool-tags" });
+        if (s.tag) tags.createSpan({ cls: "dash-tag purple", text: s.tag });
+        if (s.status) tags.createSpan({ cls: "dash-tag gold", text: s.status });
+        const actions = item.createDiv({ cls: "dash-pool-actions" });
+        const edit = actions.createEl("button", { text: "编辑" });
+        edit.addEventListener("click", () => {
+          editingIdx = i;
+          titleIn.value = s.title || "";
+          tagIn.value = s.tag || "";
+          statusSel.value = s.status || "待写";
+          addBtn.setText("💾 保存修改");
+          form.scrollIntoView({ block: "nearest", behavior: "instant" });
+        });
+        const del = actions.createEl("button", { text: "删除", cls: "del" });
+        del.addEventListener("click", () => {
+          pool.splice(i, 1);
+          save();
+          renderList();
+        });
+      });
+    };
+
+    // 添加/编辑表单
+    let editingIdx = -1;
+    const form = page.createDiv({ cls: "dash-form" });
+    const titleIn = form.createEl("input", { attr: { placeholder: "选题标题（必填）" } });
+    const tagIn = form.createEl("input", { attr: { placeholder: "标签（如：AI/财经）" } });
+    const statusSel = form.createEl("select");
+    ["待写", "写作中", "已发布"].forEach((o) => statusSel.createEl("option", { text: o }));
+    const addBtn = form.createEl("button", { text: "➕ 添加" });
+    addBtn.addEventListener("click", () => {
+      const title = titleIn.value.trim();
+      if (!title) return;
+      const data = { title, tag: tagIn.value.trim(), status: statusSel.value };
+      if (editingIdx >= 0 && editingIdx < pool.length) {
+        pool[editingIdx] = data;
+        editingIdx = -1;
+        addBtn.setText("➕ 添加");
+      } else {
+        pool.push(data);
+      }
+      save();
+      titleIn.value = tagIn.value = "";
+      renderList();
+    });
+
+    const listEl = page.createDiv();
+    renderList();
+  }
+
+  /* ═══════════════════════════ 工具方法 ═══════════════════════════ */
+
+  private goto(page: Page) {
+    this.page = page;
+    this.render();
+  }
+
+  /** 获取某页面的组件实例列表（首页兼容 activeWidgets 旧数据） */
+  private getPageWidgets(page: Page): string[] {
+    if (page === "home") {
+      return this.plugin.settings.activeWidgets?.length
+        ? this.plugin.settings.activeWidgets
+        : WIDGETS.map((w) => w.id);
+    }
+    return this.plugin.settings.pageWidgets?.[page] || [];
+  }
+
+  /** 添加组件实例：写入当前页组件列表并刷新（同组件可多实例，id 追加 #N） */
+  private addWidgetInstance(widgetId: string) {
+    const page = this.page;
+    const list = [...this.getPageWidgets(page)];
+    const count = list.filter((id) => id.split("#")[0] === widgetId).length;
+    const instId = count === 0 ? widgetId : `${widgetId}#${count}`;
+    list.push(instId);
+    if (page === "home") {
+      this.plugin.settings.activeWidgets = list;
+    } else {
+      const pw = { ...(this.plugin.settings.pageWidgets || {}) };
+      pw[page] = list;
+      this.plugin.settings.pageWidgets = pw;
+    }
+    this.plugin.saveSettings();
+    new Notice(`已添加组件：${widgetId}`);
+    this.reload();
+  }
+
+  private habitData(): HabitData {
+    return this.plugin.settings.habits || {};
+  }
+
+  private saveHabitData(data: HabitData) {
+    this.plugin.settings.habits = data;
+    this.plugin.saveSettings();
+  }
+
+  private heatLevel(i: number): string {
+    // 近 30 天热力：越靠近今天越亮（c1 深 → c4 亮）
+    if (i >= 27) return " c4";
+    if (i >= 21) return " c3";
+    if (i >= 10) return " c2";
+    return " c1";
+  }
+
+  private levelCls(level: string): string {
+    const l = (level || "L1").toUpperCase();
+    if (l === "L3") return "l3";
+    if (l === "L2") return "l2";
+    return "l1";
+  }
+
+  private fmtDate(ts: number): string {
+    const d = new Date(ts);
+    return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  private drawBarChart(container: HTMLElement, data: [string, number][]) {
+    if (data.length === 0) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = 200;
+    canvas.height = 80;
+    container.appendChild(canvas);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const max = Math.max(...data.map(([, v]) => v), 1);
+    const bw = 200 / data.length;
+    data.forEach(([label, v], i) => {
+      const h = Math.max(2, (v / max) * 70);
+      const grad = ctx.createLinearGradient(0, 80 - h, 0, 80);
+      grad.addColorStop(0, "#8b5cf6");
+      grad.addColorStop(1, "#fbbf24");
+      ctx.fillStyle = grad;
+      ctx.fillRect(i * bw + bw * 0.15, 80 - h, bw * 0.7, h);
+      ctx.fillStyle = "#7d8ba1";
+      ctx.font = "8px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(label, i * bw + bw / 2, 78);
+    });
+  }
+}
+
+/** 选择添加组件的弹窗：按分类折叠列出所有可用 widget，点击添加 */
+class AddWidgetModal extends Modal {
+  private onPick: (widgetId: string) => void;
+
+  constructor(app: App, onPick: (widgetId: string) => void) {
+    super(app);
+    this.onPick = onPick;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h3", { text: "➕ 选择要添加的组件" });
+
+    const grouped = groupWidgetsByCategory();
+    const catOrder = new Map<string, number>();
+    CATEGORIES.forEach((c, i) => catOrder.set(c.id, i));
+
+    // 按分类定义顺序渲染（未匹配分类的归入 other，排最后）
+    const sortedCats = [...grouped.keys()].sort((a, b) => {
+      const ai = catOrder.get(a) ?? 999;
+      const bi = catOrder.get(b) ?? 999;
+      return ai - bi;
+    });
+
+    for (const catId of sortedCats) {
+      const widgets = grouped.get(catId)!;
+      const cat = CATEGORIES.find((c) => c.id === catId) || { id: "other", icon: "📦", name: "其他" };
+
+      // 分类头（可折叠）
+      const header = contentEl.createDiv({ cls: "wb-cat-header" });
+      header.createSpan({ cls: "wb-cat-icon", text: cat.icon });
+      header.createSpan({ cls: "wb-cat-label", text: cat.name });
+      header.createSpan({ cls: "wb-cat-count", text: String(widgets.length) });
+      header.createSpan({ cls: "wb-cat-arrow", text: "▾" });
+
+      const body = contentEl.createDiv({ cls: "wb-cat-body" });
+      header.addEventListener("click", () => {
+        const collapsed = body.classList.toggle("collapsed");
+        header.querySelector(".wb-cat-arrow")?.setText(collapsed ? "▸" : "▾");
+      });
+
+      // 组件行
+      for (const w of widgets) {
+        const row = body.createDiv({ cls: "wb-add-widget" });
+        row.createSpan({ cls: "wb-add-icon", text: w.icon });
+        row.createSpan({ cls: "wb-add-title", text: w.title });
+        const btn = row.createEl("button", { cls: "wb-add-btn", text: "添加" });
+        btn.addEventListener("click", () => {
+          this.onPick(w.id);
+          this.close();
+        });
+      }
+    }
+  }
+
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+}
+
+/** 知识卡片内容阅读 Modal：点击卡片弹出，渲染笔记正文，不直接跳转文档 */
+class CardContentModal extends Modal {
+  private file: TFile;
+
+  constructor(app: App, file: TFile) {
+    super(app);
+    this.file = file;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.addClass("wb-card-modal");
+
+    contentEl.createEl("h3", { text: this.file.basename, cls: "wb-card-modal-title" });
+    const body = contentEl.createDiv({ cls: "wb-card-modal-body" });
+    this.app.vault.read(this.file).then((content) => {
+      MarkdownRenderer.renderMarkdown(content, body, this.file.path, this as any);
+      // 关联卡片链接：在 body（祖先）上挂捕获监听，先于 Obsidian 默认 wikilink 处理器触发，
+      // 拦截后在本 Modal 内继续阅读（嵌套弹 CardContentModal），避免默认跳转失效/双开。
+      body.addEventListener(
+        "click",
+        (ev: MouseEvent) => {
+          const a = (ev.target as HTMLElement)?.closest?.("a.internal-link") as HTMLAnchorElement | null;
+          if (!a) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          const raw = (a.getAttribute("data-href") || a.getAttribute("href") || "").trim();
+          const linkpath = raw.split("#")[0].split("|")[0].trim();
+          const target = this.app.metadataCache.getFirstLinkpathDest(linkpath, this.file.path);
+          if (target instanceof TFile) {
+            new CardContentModal(this.app, target).open();
+          } else {
+            new Notice("未找到关联笔记：" + linkpath);
+          }
+        },
+        true
+      );
+    });
+
+    const footer = contentEl.createDiv({ cls: "wb-card-modal-footer" });
+
+    // 已复习按钮：记录复习状态（写入笔记 frontmatter: reviewed / reviewedAt）
+    const reviewedBtn = footer.createEl("button", { cls: "wb-add-btn wb-reviewed-btn" });
+    // 用局部变量作为状态真相来源，避免 metadataCache 异步刷新滞后导致按钮文案与状态错位（差一拍）
+    let reviewed = !!(this.app.metadataCache.getFileCache(this.file)?.frontmatter?.reviewed);
+    const syncReviewed = () => {
+      reviewedBtn.textContent = reviewed ? "✅ 已复习" : "✓ 标记已复习";
+      reviewedBtn.classList.toggle("is-done", reviewed);
+    };
+    syncReviewed();
+    reviewedBtn.addEventListener("click", () => {
+      reviewed = !reviewed;
+      this.app.fileManager
+        .processFrontMatter(this.file, (fm: any) => {
+          if (reviewed) {
+            fm.reviewed = true;
+            fm.reviewedAt = new Date().toISOString();
+          } else {
+            delete fm.reviewed;
+            delete fm.reviewedAt;
+          }
+        })
+        .then(() => {
+          syncReviewed();
+          new Notice(reviewed ? "✅ 已记录复习状态" : "已取消复习标记");
+        });
+    });
+
+    const openBtn = footer.createEl("button", { cls: "wb-add-btn", text: "📄 在 Obsidian 中打开" });
+    openBtn.addEventListener("click", () => {
+      openFile(this.app, this.file.path);
+      this.close();
+    });
+  }
+
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+}

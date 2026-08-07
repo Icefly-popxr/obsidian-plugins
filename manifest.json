@@ -1,0 +1,9 @@
+{
+  "id": "knowledge-workbench",
+  "name": "知识库工作台",
+  "version": "1.0.0",
+  "minAppVersion": "1.5.0",
+  "description": "深色战情中心风格的个人知识库工作台：总览、Inbox、KC卡片、项目、复习、任务、打卡、图表、目标、播客、看板。",
+  "author": "IceFly",
+  "isDesktopOnly": true
+}

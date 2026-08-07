@@ -1,0 +1,30 @@
+{
+  "name": "knowledge-workbench",
+  "version": "1.0.0",
+  "description": "深色战情中心风格的个人知识库工作台：总览、Inbox、KC卡片、项目、复习、任务、打卡、图表、目标、播客、看板。",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+  },
+  "keywords": [
+    "obsidian",
+    "plugin",
+    "dashboard",
+    "workbench"
+  ],
+  "author": "IceFly",
+  "license": "MIT",
+  "devDependencies": {
+    "@esbuild/linux-x64": "^0.28.1",
+    "@types/node": "^20.11.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.19.11",
+    "obsidian": "^1.5.7",
+    "tslib": "^2.6.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "ogl": "^1.0.11"
+  }
+}
