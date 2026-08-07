@@ -17,6 +17,8 @@ export class WidgetConfigDrawer extends Modal {
   private plugin: KnowledgeWorkbenchPlugin;
   private instanceId: string;
   private widget: WorkbenchWidget;
+  /** 防止重复触发关闭动画 */
+  private closing = false;
 
   constructor(
     app: App,
@@ -35,6 +37,12 @@ export class WidgetConfigDrawer extends Modal {
     contentEl.empty();
     this.modalEl.addClass("wb-drawer");
     contentEl.addClass("wb-config-drawer");
+
+    // 滑入动画：先定位到屏幕右侧外（translateX(100%)），下一帧过渡回原位
+    this.modalEl.addClass("wb-drawer-enter");
+    requestAnimationFrame(() => {
+      this.modalEl.removeClass("wb-drawer-enter");
+    });
 
     // 上沿对齐左菜单栏（.wb-sidebar）顶部，不占满整屏
     const leaves = this.app.workspace.getLeavesOfType("knowledge-workbench-view");
@@ -146,6 +154,16 @@ export class WidgetConfigDrawer extends Modal {
   onClose() {
     const { contentEl } = this;
     contentEl.empty();
+  }
+
+  /** 滑出动画后真正关闭：加 exit class → 等过渡结束 → 调用父类 close */
+  close() {
+    if (this.closing) return;
+    this.closing = true;
+    this.modalEl.addClass("wb-drawer-exit");
+    window.setTimeout(() => {
+      super.close();
+    }, 260); // 与 styles.css 中 .wb-drawer transition 时长一致
   }
 }
 

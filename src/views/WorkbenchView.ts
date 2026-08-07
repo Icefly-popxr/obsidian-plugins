@@ -121,8 +121,19 @@ export class WorkbenchView extends ItemView {
     }
   }
 
-  /** 全量加载数据并渲染 */
-  async reload() {
+  /** 全量扫描结果缓存（TTL 60s，避免频繁重复全库扫描） */
+  private scanCache: { data: LoadedData; ts: number } | null = null;
+
+  /** 全量加载数据并渲染（force=true 强制重新扫描，跳过缓存） */
+  async reload(force = false) {
+    const now = Date.now();
+    // 缓存命中（60s 内）且非强制刷新 → 直接用缓存数据，不重复扫描
+    if (!force && this.scanCache && now - this.scanCache.ts < 60_000) {
+      this.data = this.scanCache.data;
+      this.sharedData = await loadSharedData(this.app);
+      this.render();
+      return;
+    }
     // 首次加载（尚无数据）时先显示骨架屏，数据就绪后 render() 替换
     if (!this.data) this.renderSkeleton();
 
@@ -142,7 +153,9 @@ export class WorkbenchView extends ItemView {
       (f) => f.path.includes("Clipping") || f.path.includes("剪藏")
     );
 
-    this.data = { stats, kcCards, projects, tasks, recent, inbox, clippings };
+    const data: LoadedData = { stats, kcCards, projects, tasks, recent, inbox, clippings };
+    this.data = data;
+    this.scanCache = { data, ts: now };
     // 加载共享数据（vault 00_工具/工作台数据.json，与 Web 端共用）
     this.sharedData = await loadSharedData(this.app);
     this.render();
@@ -350,9 +363,9 @@ export class WorkbenchView extends ItemView {
     makeAction("➕ 新建", () => {
       new AddWidgetModal(this.app, (widgetId) => this.addWidgetInstance(widgetId)).open();
     });
-    // 刷新：重渲染工作台视图
+    // 刷新：强制重新扫描（跳过缓存），重渲染工作台视图
     makeAction("🔄 刷新", () => {
-      this.reload();
+      this.reload(true);
     });
     // 设置：直接弹出知识库工作台后台面板（与系统配置页"打开工作台 Dashboard"一致）
     makeAction("⚙️ 设置", () => {
