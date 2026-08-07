@@ -9,6 +9,7 @@
  */
 
 import { MoltenBackground, MoltenParams } from "../backgrounds/MoltenBackground";
+import { FerrofluidBackground, FerrofluidParams } from "../backgrounds/FerrofluidBackground";
 
 /** 动效作用域 */
 export type EffectScope = "page" | "hero";
@@ -108,6 +109,37 @@ function buildMolten(container: HTMLElement): () => void {
   };
 }
 
+/** 铁磁流体默认参数（用户指定：全白银流体、向下流动） */
+export const FERROFLUID_DEFAULT_PARAMS: FerrofluidParams = {
+  colors: ["#ffffff", "#ffffff", "#ffffff"],
+  speed: 0.2,
+  scale: 2.2,
+  turbulence: 0.6,
+  fluidity: 0.1,
+  rimWidth: 0.2,
+  sharpness: 3,
+  shimmer: 0.6,
+  glow: 1.0,
+  flowDirection: "down",
+  opacity: 1,
+  mouseInteraction: true,
+  mouseStrength: 1,
+  mouseRadius: 0.3,
+  mouseDampening: 0.15,
+  centerHollow: 0.68,
+};
+
+/** 头图铁磁流体：Ferrofluid WebGL 动态背景（返回 dispose 释放 GL 上下文） */
+function buildFerrofluid(container: HTMLElement): () => void {
+  const host = container.createDiv({ cls: "wb-hero-ferrofluid" });
+  const bg = new FerrofluidBackground();
+  bg.mount(host, FERROFLUID_DEFAULT_PARAMS);
+  return () => {
+    bg.unmount();
+    if (host.parentElement) host.parentElement.removeChild(host);
+  };
+}
+
 /** ───────── 注册表 ───────── */
 
 export const EFFECTS: EffectDef[] = [
@@ -146,6 +178,15 @@ export const EFFECTS: EffectDef[] = [
     scope: "hero",
     defaultOn: true,
     build: buildMolten,
+  },
+  {
+    id: "ferrofluid",
+    name: "铁磁流体",
+    icon: "🔮",
+    desc: "Ferrofluid 液态金属流动背景（暗黑粘稠、边缘微光），与熔岩二选一",
+    scope: "hero",
+    defaultOn: false,
+    build: buildFerrofluid,
   },
 ];
 

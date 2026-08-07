@@ -192,6 +192,28 @@ body.theme-light .workbench-container {
   opacity: 0.55;
 }
 
+/* 铁磁流体（Ferrofluid）头图背景：透明底，线条/微光浮在底图或熔岩之上 */
+.wb-hero-ferrofluid {
+  position: absolute;
+  inset: 0;
+  opacity: var(--wb-hero-ferrofluid-opacity, 1.0);
+  pointer-events: none;
+}
+
+.wb-hero-ferrofluid canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  position: relative;
+  z-index: 1;
+}
+
+/* 有自定义头图时：铁磁流体同样降透明度作半透明氛围层 */
+.wb-hero--has-media .wb-hero-ferrofluid {
+  opacity: 0.6;
+}
+
 .wb-hero-molten canvas {
   width: 100%;
   height: 100%;
@@ -519,8 +541,11 @@ body.theme-light .wb-kpi-card .wb-num { animation: none; }
 /* ── 数据统计组件（stat-kpi 面板内 KPI 卡网格，避免被自由布局单独定位） ── */
 .wb-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  /* auto-fit：格子数不足时折叠空轨道，卡片拉宽后格子自动拉伸铺满，不留右侧空白 */
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   gap: 8px;
+  /* 容器查询：内部图标/数值尺寸可随容器宽度自适应 */
+  container-type: inline-size;
 }
 .wb-kpi-mini {
   position: relative;
@@ -539,13 +564,15 @@ body.theme-light .wb-kpi-card .wb-num { animation: none; }
 }
 .wb-kpi-mini .wb-ico {
   margin: 0 auto 2px;
-  width: 24px;
-  height: 24px;
-  font-size: 13px;
+  /* 随容器宽度自适应：窄容器小图标，拉宽后图标同步增大 */
+  width: clamp(20px, 8cqw, 44px);
+  height: clamp(20px, 8cqw, 44px);
+  font-size: clamp(12px, 4.5cqw, 24px);
 }
 .wb-kpi-mini .wb-num {
   font-family: var(--wb-mono);
-  font-size: 20px;
+  /* 数值随容器宽度适度自适应 */
+  font-size: clamp(16px, 6cqw, 30px);
   font-weight: 700;
   color: var(--wb-gold);
   animation: wb-glow 3.5s ease-in-out infinite;
