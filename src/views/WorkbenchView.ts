@@ -282,8 +282,8 @@ export class WorkbenchView extends ItemView {
     const hero = wrap.createDiv({ cls: "wb-hero" });
     this.bgLayer = hero;
 
-    // 默认头图 = 纯 MoltenMetal 动态背景（原版观感，不显示草帽全员图）。
-    // 只有用户主动自定义头图（image / GIF 动图 / video）时才渲染图/视频层。
+    // 默认头图 = 纯 MoltenMetal 动态背景（原版观感）。
+    // 用户主动自定义头图（image / GIF 动图 / video）时渲染图/视频层，熔岩仍叠加作氛围。
     const media = this.plugin.settings.heroMedia;
     if (media) {
       const heroSrc = media.src;
@@ -314,12 +314,12 @@ export class WorkbenchView extends ItemView {
       this.reload();
     });
 
-    // 头图级动效（熔岩 WebGL）：自定义头图/视频时不叠加，避免遮挡
-    if (!media) {
-      this.effectDisposers.push(
-        ...buildEffects(hero, "hero", this.plugin.settings.effects, this.plugin.settings.showEffects)
-      );
-    }
+    // 头图级动效（熔岩 WebGL）：始终叠加在头图区。
+    // 有自定义头图时给 hero 加标记，CSS 把熔岩降透明度作半透明氛围层（底图仍可见）。
+    if (media) hero.classList.add("wb-hero--has-media");
+    this.effectDisposers.push(
+      ...buildEffects(hero, "hero", this.plugin.settings.effects, this.plugin.settings.showEffects)
+    );
 
     // 右下角固定功能按钮（参考图胶囊样式，按钮显隐/布局可配置）
     const ha = { ...DEFAULT_HERO_ACTIONS, ...(this.plugin.settings.heroActions || {}) };

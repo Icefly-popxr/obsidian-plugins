@@ -187,6 +187,11 @@ body.theme-light .workbench-container {
   pointer-events: none;
 }
 
+/* 有自定义头图时：熔岩降透明度，作为半透明流动氛围层叠在底图之上（底图仍可见） */
+.wb-hero--has-media .wb-hero-molten {
+  opacity: 0.55;
+}
+
 .wb-hero-molten canvas {
   width: 100%;
   height: 100%;

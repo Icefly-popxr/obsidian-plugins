@@ -3,7 +3,7 @@
  *
  * 作用域说明：
  *  - page：挂在整页背景层（.workbench-container）
- *  - hero：挂在头图区（.wb-hero），仅在未自定义头图时构建
+ *  - hero：挂在头图区（.wb-hero），始终构建；有自定义头图时由 CSS 降透明度作氛围层
  *
  * 新增动效只需往 EFFECTS 数组追加一项，设置面板与渲染逻辑会自动识别，无需改其他文件。
  */
@@ -142,7 +142,7 @@ export const EFFECTS: EffectDef[] = [
     id: "molten",
     name: "头图熔岩",
     icon: "🔥",
-    desc: "默认头图的 MoltenMetal 熔岩流动背景（自定义头图时自动跳过）",
+    desc: "MoltenMetal 熔岩流动背景：始终叠加头图区，自定义头图时作为半透明氛围层",
     scope: "hero",
     defaultOn: true,
     build: buildMolten,
