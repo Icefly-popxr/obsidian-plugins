@@ -143,8 +143,8 @@ function drawChart(
   if (type === "pie") {
     const total = data.reduce((a, [, v]) => a + v, 0);
     if (total <= 0) return;
-    // 有图例时饼图右移并增大半径，缩小饼图与图例之间的留白
-    const cx = showLegend ? 125 : w / 2;
+    // 有图例时饼图略左移，给右侧图例区留足空间（文字完整显示，不截断）
+    const cx = showLegend ? 118 : w / 2;
     const cy = h / 2;
     const r = Math.min(cx - 16, cy - 12, 62);
     let start = -Math.PI / 2;
@@ -169,26 +169,17 @@ function drawChart(
     });
     if (showLegend) {
       let ly = 18;
-      // 图例文字可用宽度：起点 w-54，画布右缘留 2px 边距
-      const legendX = w - 54;
-      const availW = w - legendX - 2;
+      // 图例区左移：色块 w-120、文字 w-108 起，可用宽度约 106px，文字完整显示
+      const swatchX = w - 120;
+      const legendX = w - 108;
       data.forEach(([label, v], i) => {
         g.fillStyle = COLORS[i % COLORS.length];
-        g.fillRect(w - 66, ly - 8, 8, 8);
+        g.fillRect(swatchX, ly - 8, 8, 8);
         g.fillStyle = "#8d9ab0";
         g.font = fs;
         g.textAlign = "left";
-        // 按实际可用宽度动态截断：measureText 逐字缩短到适配，避免末字被裁剪
-        const full = `${label} ${v}`;
-        let shown = full;
-        if (g.measureText(full).width > availW) {
-          let cut = full;
-          while (cut.length > 0 && g.measureText(cut + "…").width > availW) {
-            cut = cut.slice(0, -1);
-          }
-          shown = cut + "…";
-        }
-        g.fillText(shown, legendX, ly);
+        // 完整绘制，不截断（右侧空间已预留）
+        g.fillText(`${label} ${v}`, legendX, ly);
         ly += lineGap;
       });
     }
