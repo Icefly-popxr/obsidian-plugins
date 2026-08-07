@@ -169,17 +169,26 @@ function drawChart(
     });
     if (showLegend) {
       let ly = 18;
+      // 图例文字可用宽度：起点 w-54，画布右缘留 2px 边距
+      const legendX = w - 54;
+      const availW = w - legendX - 2;
       data.forEach(([label, v], i) => {
         g.fillStyle = COLORS[i % COLORS.length];
         g.fillRect(w - 66, ly - 8, 8, 8);
         g.fillStyle = "#8d9ab0";
         g.font = fs;
         g.textAlign = "left";
-        // 长标签截断，避免溢出画布
+        // 按实际可用宽度动态截断：measureText 逐字缩短到适配，避免末字被裁剪
         const full = `${label} ${v}`;
-        const maxW = 66;
-        const shown = g.measureText(full).width > maxW ? full.slice(0, 8) + "…" : full;
-        g.fillText(shown, w - 54, ly);
+        let shown = full;
+        if (g.measureText(full).width > availW) {
+          let cut = full;
+          while (cut.length > 0 && g.measureText(cut + "…").width > availW) {
+            cut = cut.slice(0, -1);
+          }
+          shown = cut + "…";
+        }
+        g.fillText(shown, legendX, ly);
         ly += lineGap;
       });
     }
