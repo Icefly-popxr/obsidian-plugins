@@ -228,3 +228,69 @@ export function addFontSizeControls(setting: Setting, opts: FontSizeControlsOpts
     })
   );
 }
+
+/**
+ * 统一的标题配置区：标题输入框（独占一行拉长）+ 标题字号（下一行）+ 图标。
+ * 所有组件共用同一套标题字号 UI，与图表统计/进度统计一致。
+ */
+export function addTitleConfig(
+  el: HTMLElement,
+  plugin: KnowledgeWorkbenchPlugin,
+  instanceId: string,
+  save: () => void,
+  defaults: { title: string; icon: string; titleFontSize: number }
+): void {
+  const cfgMap = plugin.settings.widgetConfigs || {};
+  const cur = () => (cfgMap[instanceId] || {}) as Record<string, unknown>;
+  const update = (patch: Record<string, unknown>) => {
+    cfgMap[instanceId] = { ...cur(), ...patch };
+    plugin.settings.widgetConfigs = cfgMap;
+    save();
+  };
+
+  const titleSetting = new Setting(el)
+    .setName("标题")
+    .setDesc(`卡片标题（留空显示「${defaults.title}」）`);
+  titleSetting.addText((t) => {
+    t
+      .setPlaceholder(defaults.title)
+      .setValue(String(cur().title ?? ""))
+      .onChange((v) => update({ title: v.trim() }));
+    t.inputEl.style.width = "100%";
+    t.inputEl.style.boxSizing = "border-box";
+    t.inputEl.style.minWidth = "200px";
+  });
+  const sizeSetting = new Setting(el)
+    .setName("标题字号")
+    .setDesc("标题文字与图标 emoji 大小（px）");
+  addFontSizeControls(sizeSetting, {
+    value:
+      typeof cur().titleFontSize === "number" && (cur().titleFontSize as number) > 0
+        ? (cur().titleFontSize as number)
+        : defaults.titleFontSize,
+    onChange: (v) => update({ titleFontSize: v }),
+  });
+  new Setting(el)
+    .setName("图标")
+    .setDesc("标题栏 emoji 图标")
+    .addText((t) =>
+      t
+        .setPlaceholder(defaults.icon)
+        .setValue(String(cur().icon ?? ""))
+        .onChange((v) => update({ icon: v.trim() }))
+    );
+}
+
+/** 渲染侧：把标题字号应用到面板标题栏（标题 + 图标 emoji 跟随） */
+export function applyTitleFontSize(bd: HTMLElement, titleFontSize: number): void {
+  const panel = bd.closest(".wb-panel");
+  if (!panel) return;
+  const ico = panel.querySelector<HTMLElement>(".wb-ico");
+  const titleEl = panel.querySelector<HTMLElement>(".wb-title");
+  if (ico) {
+    ico.style.fontSize = `${titleFontSize}px`;
+    ico.style.width = `${titleFontSize + 8}px`;
+    ico.style.height = `${titleFontSize + 8}px`;
+  }
+  if (titleEl) titleEl.style.fontSize = `${titleFontSize}px`;
+}

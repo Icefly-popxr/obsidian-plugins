@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel } from "./helpers";
+import { createPanel, WidgetConfigDrawer, applyTitleFontSize, addTitleConfig } from "./helpers";
 
 /**
  * 网页预览组件（移植自 modular-theme-dashboard 的 web-preview）
@@ -31,11 +31,16 @@ const widget: WorkbenchWidget = {
 
     const bd = createPanel(root, {
       id: "web-preview",
-      title: "网页预览",
-      icon: "🌐",
+      title: String(cfg.title || "网页预览"),
+      icon: String(cfg.icon || "🌐"),
       accent: "#38bdf8",
+      moreLabel: "⚙️",
+      onMore: () => {
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+      },
     });
     bd.addClass("wp-wrap");
+    applyTitleFontSize(bd, Number(cfg.titleFontSize) || 14);
 
     // ── 工具栏 ──
     const bar = bd.createDiv({ cls: "wp-toolbar" });
@@ -164,6 +169,11 @@ const widget: WorkbenchWidget = {
             save();
           })
       );
+    addTitleConfig(el, plugin, instanceId, save, {
+      title: "网页预览",
+      icon: "🌐",
+      titleFontSize: 14,
+    });
   },
 };
 

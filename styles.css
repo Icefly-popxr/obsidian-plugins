@@ -1283,6 +1283,26 @@ body.theme-light .wb-kpi-card .wb-num {
   -webkit-font-smoothing: antialiased;
 }
 
+/* 遮罩标题右上角 ⚙️ 配置入口（面板无标题栏，绝对定位） */
+.wb-mh-gear {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 20;
+  font-size: 12px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .35);
+  color: #fff;
+  opacity: .55;
+  cursor: pointer;
+  transition: opacity .15s, background .15s;
+}
+.wb-mh-gear:hover {
+  opacity: 1;
+  background: rgba(225, 29, 46, .75);
+}
+
 .masked-heading__measure {
   color: transparent;
 }

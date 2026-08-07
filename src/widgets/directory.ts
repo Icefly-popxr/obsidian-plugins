@@ -1,6 +1,6 @@
 import { Setting, TFolder, TAbstractFile, TFile } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState } from "./helpers";
+import { createPanel, emptyState, WidgetConfigDrawer, applyTitleFontSize, addTitleConfig } from "./helpers";
 
 /**
  * 目录组件（移植自 modular-theme-dashboard 的 directory）
@@ -80,11 +80,16 @@ const widget: WorkbenchWidget = {
 
     const bd = createPanel(root, {
       id: "directory",
-      title: "目录",
-      icon: "📂",
+      title: String(cfg.title || "目录"),
+      icon: String(cfg.icon || "📂"),
       accent: "#38bdf8",
+      moreLabel: "⚙️",
+      onMore: () => {
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+      },
     });
     bd.addClass("dir-wrap");
+    applyTitleFontSize(bd, Number(cfg.titleFontSize) || 14);
 
     const tree = bd.createDiv({ cls: "dir-tree" });
 
@@ -177,6 +182,11 @@ const widget: WorkbenchWidget = {
             save();
           })
       );
+    addTitleConfig(el, plugin, instanceId, save, {
+      title: "目录",
+      icon: "📂",
+      titleFontSize: 14,
+    });
   },
 };
 

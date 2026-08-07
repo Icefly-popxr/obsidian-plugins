@@ -1,12 +1,15 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState } from "./helpers";
+import { createPanel, emptyState, applyTitleFontSize, addTitleConfig } from "./helpers";
 import { buildHabitRecords, toggleHabit, lastNDays, HabitRecord } from "../services/habitService";
 
 interface CheckinCfg {
   /** 指定展示的某个习惯；空 = 显示全部习惯（修复原 habit-heatmap 只显首个的 bug） */
   habit?: string;
   days?: number;
+  title?: string;
+  icon?: string;
+  titleFontSize?: number;
 }
 
 /**
@@ -26,12 +29,13 @@ const widget: WorkbenchWidget = {
 
     const bd = createPanel(root, {
       id: "checkin",
-      title: "打卡",
-      icon: "🔥",
+      title: String(cfg.title || "打卡"),
+      icon: String(cfg.icon || "🔥"),
       accent: "#f59e0b",
       moreLabel: `${days} 天`,
       onMore: () => ctx.goto("board"),
     });
+    applyTitleFontSize(bd, Number(cfg.titleFontSize) || 14);
 
     const all = buildHabitRecords(ctx.habitData());
     if (all.length === 0) {
@@ -99,6 +103,11 @@ const widget: WorkbenchWidget = {
             update({ days: isNaN(n) || n <= 0 ? 30 : n });
           })
       );
+    addTitleConfig(el, plugin, instanceId, save, {
+      title: "打卡",
+      icon: "🔥",
+      titleFontSize: 14,
+    });
   },
 };
 

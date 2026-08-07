@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState } from "./helpers";
+import { createPanel, emptyState, applyTitleFontSize, addTitleConfig } from "./helpers";
 import type { Project } from "../services/projectService";
 import { openFile } from "../services/vaultService";
 
@@ -8,6 +8,9 @@ type ObjFilter = "all" | "active" | "done";
 interface ObjCfg {
   filter?: ObjFilter;
   maxItems?: number;
+  title?: string;
+  icon?: string;
+  titleFontSize?: number;
 }
 
 /**
@@ -29,11 +32,12 @@ const widget: WorkbenchWidget = {
 
     const bd = createPanel(root, {
       id: "objectives",
-      title: "目标与项目",
-      icon: "🎯",
+      title: String(cfg.title || "目标与项目"),
+      icon: String(cfg.icon || "🎯"),
       accent: "#8b5cf6",
       moreLabel: `${ctx.data.projects.length} 个`,
     });
+    applyTitleFontSize(bd, Number(cfg.titleFontSize) || 14);
 
     let projects = ctx.data.projects.slice();
     if (filter === "active") projects = projects.filter((p) => p.progress < 100);
@@ -106,6 +110,11 @@ const widget: WorkbenchWidget = {
             update({ maxItems: isNaN(n) ? 0 : n });
           })
       );
+    addTitleConfig(el, plugin, instanceId, save, {
+      title: "目标与项目",
+      icon: "🎯",
+      titleFontSize: 14,
+    });
   },
 };
 

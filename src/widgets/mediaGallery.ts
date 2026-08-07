@@ -1,6 +1,6 @@
 import { Setting, TFile } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel } from "./helpers";
+import { createPanel, WidgetConfigDrawer, applyTitleFontSize, addTitleConfig } from "./helpers";
 
 /**
  * 媒体画廊组件（移植自 modular-theme-dashboard 的 media-gallery）
@@ -52,11 +52,16 @@ const widget: WorkbenchWidget = {
 
     const bd = createPanel(root, {
       id: "media-gallery",
-      title: "媒体画廊",
-      icon: "🎬",
+      title: String(cfg.title || "媒体画廊"),
+      icon: String(cfg.icon || "🎬"),
       accent: "#ec4899",
+      moreLabel: "⚙️",
+      onMore: () => {
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+      },
     });
     bd.addClass("mg-wrap");
+    applyTitleFontSize(bd, Number(cfg.titleFontSize) || 14);
 
     // ── 工具栏 ──
     const bar = bd.createDiv({ cls: "mg-toolbar" });
@@ -323,6 +328,11 @@ const widget: WorkbenchWidget = {
             save();
           })
       );
+    addTitleConfig(el, plugin, instanceId, save, {
+      title: "媒体画廊",
+      icon: "🎬",
+      titleFontSize: 14,
+    });
   },
 };
 

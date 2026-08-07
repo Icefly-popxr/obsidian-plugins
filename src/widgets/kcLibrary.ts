@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { emptyState } from "./helpers";
+import { emptyState, WidgetConfigDrawer, applyTitleFontSize, addTitleConfig } from "./helpers";
 
 /** KC 卡片库：最近卡片列表 */
 const widget: WorkbenchWidget = {
@@ -10,16 +10,25 @@ const widget: WorkbenchWidget = {
   accent: "#a78bfa",
   category: "notes",
   render(ctx: WidgetCtx, root: HTMLElement) {
-    const maxItems = Number(ctx.widgetConfig.maxItems) || 5;
+    const cfg = (ctx.widgetConfig || {}) as { maxItems?: number; title?: string; icon?: string; titleFontSize?: number };
+    const maxItems = Number(cfg.maxItems) || 5;
+    const titleFontSize =
+      typeof cfg.titleFontSize === "number" && cfg.titleFontSize > 0 ? cfg.titleFontSize : 14;
     const p = root.createDiv({ cls: "wb-panel wb-w kc-library" });
     p.dataset.id = "kc-library";
     p.style.setProperty("--w-accent", "#a78bfa");
 
     const hd = p.createDiv({ cls: "wb-hd" });
-    hd.createDiv({ cls: "wb-ico", text: "🎴" });
-    hd.createSpan({ cls: "wb-title", text: "KC 卡片库" });
-    const more = hd.createDiv({ cls: "wb-more", text: "看板" });
-    more.addEventListener("click", () => ctx.goto("board"));
+    const ico = hd.createDiv({ cls: "wb-ico", text: cfg.icon || "🎴" });
+    const titleEl = hd.createSpan({ cls: "wb-title", text: cfg.title || "KC 卡片库" });
+    ico.style.fontSize = `${titleFontSize}px`;
+    ico.style.width = `${titleFontSize + 8}px`;
+    ico.style.height = `${titleFontSize + 8}px`;
+    titleEl.style.fontSize = `${titleFontSize}px`;
+    const more = hd.createDiv({ cls: "wb-more", text: "⚙️" });
+    more.addEventListener("click", () => {
+      new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+    });
 
     const bd = p.createDiv({ cls: "wb-bd" });
     const cards = ctx.data.kcCards;
@@ -56,6 +65,11 @@ const widget: WorkbenchWidget = {
             save();
           })
       );
+    addTitleConfig(el, plugin, instanceId, save, {
+      title: "KC 卡片库",
+      icon: "🎴",
+      titleFontSize: 14,
+    });
   },
 };
 

@@ -1,6 +1,7 @@
-import { Modal, App } from "obsidian";
+import { Modal, App, Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
 import { MaskedHeading } from "../components/MaskedHeading";
+import { WidgetConfigDrawer, addFontSizeControls } from "./helpers";
 
 /**
  * 遮罩标题组件（V4）：
@@ -208,6 +209,13 @@ const widget: WorkbenchWidget = {
     p.dataset.id = "masked-heading";
     p.style.setProperty("--w-accent", "#e11d2e");
 
+    // 右上角 ⚙️ 配置入口（打开右侧抽屉）
+    const gear = p.createDiv({ cls: "wb-more wb-mh-gear", text: "⚙️" });
+    gear.addEventListener("click", (e) => {
+      e.stopPropagation();
+      new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+    });
+
     // 背景：实例配置的 bgUrl（图片/视频 URL）或内置渐变
     const src = cfg?.bgUrl || gradientBgDataUri();
     const mediaType = cfg?.bgUrl && /\.(mp4|webm|ogg|mov)(\?|#|$)/i.test(cfg.bgUrl) ? "video" : "image";
@@ -258,6 +266,69 @@ const widget: WorkbenchWidget = {
 
     const handle = p.createDiv({ cls: "wb-resize-handle" });
     handle.dataset.for = "masked-heading";
+  },
+  renderSettings(el, plugin, instanceId, save) {
+    const cfgMap = plugin.settings.maskedHeadingConfig || {};
+    const inst = cfgMap[instanceId] || {};
+
+    const update = (patch: Record<string, unknown>) => {
+      cfgMap[instanceId] = { ...(cfgMap[instanceId] || {}), ...patch };
+      plugin.settings.maskedHeadingConfig = cfgMap;
+      save();
+    };
+
+    // 文字内容
+    const textSetting = new Setting(el).setName("标题文字").setDesc("遮罩标题的文字内容");
+    textSetting.addText((t) => {
+      t
+        .setPlaceholder("双击编辑标题")
+        .setValue(String(inst.text || ""))
+        .onChange((v) => update({ text: v.trim() }));
+      t.inputEl.style.width = "100%";
+      t.inputEl.style.boxSizing = "border-box";
+      t.inputEl.style.minWidth = "200px";
+    });
+
+    // 字号（含图标 emoji 跟随）
+    const sizeSetting = new Setting(el)
+      .setName("标题字号")
+      .setDesc("标题文字大小（px）");
+    addFontSizeControls(sizeSetting, {
+      value: typeof inst.fontSize === "number" && inst.fontSize > 0 ? inst.fontSize : 44,
+      onChange: (v) => update({ fontSize: v }),
+    });
+
+    // 文字颜色（预设色板）
+    el.createEl("h4", {
+      text: "🎨 文字颜色",
+      attr: { style: "margin:12px 0 4px;font-size:13px;font-weight:700;" },
+    });
+    const swatchWrap = el.createDiv({
+      attr: { style: "display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px;" },
+    });
+    const paint = (hex: string) => {
+      swatchWrap.querySelectorAll<HTMLElement>("button").forEach((b) => {
+        b.style.borderColor = "var(--background-modifier-border)";
+        b.style.boxShadow = "none";
+      });
+      if (hex) {
+        const sel = swatchWrap.querySelector<HTMLElement>(`[data-c="${hex}"]`);
+        if (sel) {
+          sel.style.borderColor = "var(--interactive-accent)";
+          sel.style.boxShadow = "0 0 0 2px var(--interactive-accent)";
+        }
+      }
+      update({ color: hex });
+    };
+    PRESET_COLORS.forEach((c) => {
+      const sw = swatchWrap.createEl("button", {
+        attr: {
+          "data-c": c,
+          style: `width:24px;height:24px;border-radius:6px;cursor:pointer;padding:0;border:2px solid var(--background-modifier-border);background:${c};`,
+        },
+      });
+      sw.addEventListener("click", () => paint(c));
+    });
   },
   onunload() {
     for (const mh of instances.values()) {

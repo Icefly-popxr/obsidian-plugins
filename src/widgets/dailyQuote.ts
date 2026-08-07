@@ -1,5 +1,6 @@
+import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel } from "./helpers";
+import { createPanel, addFontSizeControls, WidgetConfigDrawer } from "./helpers";
 
 /** 每日金句：按日期取一条，可换一句（Dashboard 风格） */
 const QUOTES: [string, string][] = [
@@ -22,24 +23,57 @@ function dayIndex(): number {
   );
 }
 
+interface DailyQuoteCfg {
+  title?: string;
+  icon?: string;
+  titleFontSize?: number;
+  /** 金句正文字号 */
+  quoteFontSize?: number;
+}
+
+const DEFAULT_ACCENT = "#fbbf24";
+
 const widget: WorkbenchWidget = {
   id: "daily-quote",
   title: "每日金句",
   icon: "💬",
-  accent: "#fbbf24",
+  accent: DEFAULT_ACCENT,
   category: "notes",
   render(ctx: WidgetCtx, root: HTMLElement) {
+    const cfg = (ctx.widgetConfig || {}) as DailyQuoteCfg;
+    const titleFontSize =
+      typeof cfg.titleFontSize === "number" && cfg.titleFontSize > 0 ? cfg.titleFontSize : 14;
+    const quoteFontSize =
+      typeof cfg.quoteFontSize === "number" && cfg.quoteFontSize > 0 ? cfg.quoteFontSize : 14;
+
     const bd = createPanel(root, {
       id: "daily-quote",
-      title: "每日金句",
-      icon: "💬",
-      accent: "#fbbf24",
+      title: cfg.title || "每日金句",
+      icon: cfg.icon || "💬",
+      accent: DEFAULT_ACCENT,
+      moreLabel: "⚙️",
+      onMore: () => {
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+      },
     });
+
+    // 标题栏字号（含图标 emoji 跟随）
+    const panel = bd.closest(".wb-panel");
+    if (panel) {
+      const ico = panel.querySelector<HTMLElement>(".wb-ico");
+      const titleEl = panel.querySelector<HTMLElement>(".wb-title");
+      if (ico) {
+        ico.style.fontSize = `${titleFontSize}px`;
+        ico.style.width = `${titleFontSize + 8}px`;
+        ico.style.height = `${titleFontSize + 8}px`;
+      }
+      if (titleEl) titleEl.style.fontSize = `${titleFontSize}px`;
+    }
 
     let idx = dayIndex() % QUOTES.length;
     const cn = bd.createDiv({
       cls: "dash-quote-cn",
-      attr: { style: "font-size:14px;line-height:1.6;font-weight:500;" },
+      attr: { style: `font-size:${quoteFontSize}px;line-height:1.6;font-weight:500;` },
       text: QUOTES[idx][0],
     });
     const en = bd.createDiv({
@@ -117,6 +151,57 @@ const widget: WorkbenchWidget = {
         });
       }
     }
+  },
+  renderSettings(el, plugin, instanceId, save) {
+    const cfgMap = plugin.settings.widgetConfigs || {};
+    const inst = (cfgMap[instanceId] || {}) as DailyQuoteCfg;
+
+    const update = (patch: Partial<DailyQuoteCfg>) => {
+      const current = (cfgMap[instanceId] || {}) as DailyQuoteCfg;
+      cfgMap[instanceId] = { ...current, ...patch };
+      plugin.settings.widgetConfigs = cfgMap;
+      save();
+    };
+
+    // 标题：输入框独占一行（拉长），字号控件放下一行
+    const titleSetting = new Setting(el).setName("标题").setDesc("卡片标题（留空显示「每日金句」）");
+    titleSetting.addText((t) => {
+      t
+        .setPlaceholder("例如：今日一言")
+        .setValue(String(inst.title || ""))
+        .onChange((v) => update({ title: v.trim() }));
+      t.inputEl.style.width = "100%";
+      t.inputEl.style.boxSizing = "border-box";
+      t.inputEl.style.minWidth = "200px";
+    });
+    const titleSizeSetting = new Setting(el)
+      .setName("标题字号")
+      .setDesc("标题文字与图标 emoji 大小（px）");
+    addFontSizeControls(titleSizeSetting, {
+      value:
+        typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14,
+      onChange: (v) => update({ titleFontSize: v }),
+    });
+
+    new Setting(el)
+      .setName("图标")
+      .setDesc("标题栏 emoji 图标")
+      .addText((t) =>
+        t
+          .setPlaceholder("例如：💬")
+          .setValue(String(inst.icon || ""))
+          .onChange((v) => update({ icon: v.trim() }))
+      );
+
+    // 金句正文字号
+    const quoteSizeSetting = new Setting(el)
+      .setName("金句字号")
+      .setDesc("金句正文字号（px）");
+    addFontSizeControls(quoteSizeSetting, {
+      value:
+        typeof inst.quoteFontSize === "number" && inst.quoteFontSize > 0 ? inst.quoteFontSize : 14,
+      onChange: (v) => update({ quoteFontSize: v }),
+    });
   },
 };
 

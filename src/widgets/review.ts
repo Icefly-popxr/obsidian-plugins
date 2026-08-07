@@ -1,10 +1,13 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState } from "./helpers";
+import { createPanel, emptyState, applyTitleFontSize, addTitleConfig } from "./helpers";
 import { dueCards } from "../services/kcService";
 
 interface ReviewCfg {
   maxItems?: number;
+  title?: string;
+  icon?: string;
+  titleFontSize?: number;
 }
 
 /**
@@ -25,12 +28,13 @@ const widget: WorkbenchWidget = {
 
     const bd = createPanel(root, {
       id: "review",
-      title: "复习",
-      icon: "🔁",
+      title: String(cfg.title || "复习"),
+      icon: String(cfg.icon || "🔁"),
       accent: "#fbbf24",
       moreLabel: `${due.length} 张`,
       onMore: () => ctx.goto("wiki"),
     });
+    applyTitleFontSize(bd, Number(cfg.titleFontSize) || 14);
 
     if (due.length === 0) {
       emptyState(bd, "暂无到期卡片 🎉");
@@ -61,6 +65,11 @@ const widget: WorkbenchWidget = {
             save();
           })
       );
+    addTitleConfig(el, plugin, instanceId, save, {
+      title: "复习",
+      icon: "🔁",
+      titleFontSize: 14,
+    });
   },
 };
 

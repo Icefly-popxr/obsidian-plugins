@@ -314,9 +314,9 @@ export class WorkbenchView extends ItemView {
     makeAction("🔄 刷新", () => {
       this.reload();
     });
-    // 设置：进入工作台配置页
+    // 设置：直接弹出知识库工作台后台面板（与系统配置页"打开工作台 Dashboard"一致）
     makeAction("⚙️ 设置", () => {
-      this.goto("config");
+      this.openDashboardSettings();
     });
     // 皮肤：太阳/月亮切换深色/浅色主题（双触发：配置持久化 + 命令真正刷新外观）
     const themeBtn = actions.createSpan({ cls: "wb-hero-action wb-theme-toggle" });
@@ -1706,6 +1706,32 @@ export class WorkbenchView extends ItemView {
   private _recChunks: Blob[] = [];
   private _recIdx = -1;
 
+  /** 直接弹出知识库工作台后台面板（Obsidian 设置 → 插件设置 Tab），与 config 页"打开工作台 Dashboard"一致 */
+  private openDashboardSettings() {
+    try {
+      const setting = (this.app as unknown as {
+        setting: {
+          open(): void;
+          openTabById?(id: string): void;
+          tabs: { id?: string; name?: string }[];
+          pluginTabs: { id?: string; name?: string }[];
+          openTab(t: { id?: string }): void;
+        };
+      }).setting;
+      setting.open();
+      if (typeof setting.openTabById === "function") {
+        setting.openTabById("knowledge-workbench");
+      } else {
+        const tab = [...setting.tabs, ...setting.pluginTabs].find(
+          (t) => t.id === "knowledge-workbench" || t.name === "知识库工作台"
+        );
+        if (tab) setting.openTab(tab);
+      }
+    } catch (e) {
+      console.error("[workbench] 打开设置面板失败", e);
+    }
+  }
+
   private renderConfig(page: HTMLElement) {
     // ── 🚀 知识库工作台快捷入口 ──
     const entryCard = page.createDiv({ cls: "dash-review-card" });
@@ -1719,33 +1745,7 @@ export class WorkbenchView extends ItemView {
       text: "📊 打开工作台 Dashboard",
       attr: { style: "padding:10px 28px;font-size:15px;" },
     });
-    openDashboard.addEventListener("click", () => {
-      // 弹出 Obsidian 设置窗口并定位到知识库工作台插件设置 Tab（组件管理面板）
-      try {
-        const setting = (this.app as unknown as {
-          setting: {
-            open(): void;
-            openTabById?(id: string): void;
-            tabs: { id?: string; name?: string }[];
-            pluginTabs: { id?: string; name?: string }[];
-            openTab(t: { id?: string }): void;
-          };
-        }).setting;
-        setting.open();
-        // 优先：Obsidian 内置按 id 打开 Tab
-        if (typeof setting.openTabById === "function") {
-          setting.openTabById("knowledge-workbench");
-        } else {
-          // 兜底：遍历 tabs + pluginTabs 找到插件设置 Tab
-          const tab = [...setting.tabs, ...setting.pluginTabs].find(
-            (t) => t.id === "knowledge-workbench" || t.name === "知识库工作台"
-          );
-          if (tab) setting.openTab(tab);
-        }
-      } catch (e) {
-        console.error("[workbench] 打开设置面板失败", e);
-      }
-    });
+    openDashboard.addEventListener("click", () => this.openDashboardSettings());
 
     // ── 🎨 主题外观 ──
     const themeCard = page.createDiv({ cls: "dash-review-card" });
