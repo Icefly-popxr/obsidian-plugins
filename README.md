@@ -24,21 +24,25 @@ git clone git@github.com:Icefly-popxr/obsidian-plugins.git knowledge-workbench
 
 ---
 
-## ⚠️ 目录分工（最重要的约定）
+## ✅ 目录说明（单目录，无中转）
 
-| 区域 | 路径 | 作用 |
-|------|------|------|
-| **源码区** | `D:/IceFly/obsidian-workbench/` | **所有修改都在这**：TypeScript 源码 / styles.css / manifest |
-| **产物区** | `<Vault>/.obsidian/plugins/knowledge-workbench/` | Obsidian 实际加载的文件（main.js / manifest.json / styles.css），**不要直接改**，改完构建后复制过去 |
+本插件目录**就是 git 仓库**，源码和构建产物在同一处，Obsidian 直接加载这里，**无需复制**：
 
-> 产物区的文件是构建生成的，直接改会在下次 `npm run build` 后被覆盖。
+| 项 | 说明 |
+|------|------|
+| 仓库位置 | `<Vault>/.obsidian/plugins/knowledge-workbench/`（即本目录） |
+| 源码 | `src/`（TypeScript）+ `styles.css` + `manifest.json`，**所有修改都在这** |
+| 构建产物 | `main.js`（esbuild 输出，已提交入库，clone 即用） |
+| 运行时数据 | `data.json`（打卡/习惯，已 gitignore，不入库） |
+
+> 改动流程：改代码 → `npm run build` → Obsidian 里 Ctrl+P → "Reload app without saving"，即可看到改动。
 
 ---
 
 ## 📁 目录结构
 
 ```
-D:/IceFly/obsidian-workbench/
+<Vault>/.obsidian/plugins/knowledge-workbench/
 ├── manifest.json          # 插件元数据（id/name/version）
 ├── versions.json          # 版本兼容映射
 ├── package.json           # 依赖 + 构建脚本
@@ -99,18 +103,15 @@ D:/IceFly/obsidian-workbench/
 ## 🔧 改动流程（每个 agent 接手必读）
 
 ```
-① 改源码（D:/IceFly/obsidian-workbench/ 内）
+① 改源码（本目录内，无需复制）
    ├─ 样式类问题   → styles.css
    ├─ 功能/布局    → src/views/WorkbenchView.ts
    ├─ 数据逻辑     → src/services/*.ts
    ├─ 背景/熔岩    → src/backgrounds/*.ts
    └─ 设置/入口    → src/main.ts
 
-② 构建 + 复制（必须，否则 Obsidian 里看不到改动）
-   cd /d/IceFly/obsidian-workbench
+② 构建（Obsidian 直接加载本目录，构建即生效）
    npm run build
-   cp main.js manifest.json styles.css \
-     "/c/Users/IceFly/OneDrive/应用/remotely-save/Obsidian Vault/.obsidian/plugins/knowledge-workbench/"
 
 ③ 验证
    - tsc 无错误（npm run build 已含）

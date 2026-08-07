@@ -2,5 +2,8 @@ node_modules/
 *.map
 .DS_Store
 
+# 插件运行时数据（打卡/习惯等），不入库
+data.json
+
 # main.js 是构建产物，但这里刻意提交，
 # 便于 clone 到 .obsidian/plugins/ 后免构建直接启用
