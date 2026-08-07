@@ -1,12 +1,10 @@
 import type { WorkbenchWidget } from "./types";
 import statKpi from "./statKpi";
-import todoList from "./todoList";
-import habitHeatmap from "./habitHeatmap";
+import checkin from "./checkin";
 import recentFiles from "./recentFiles";
-import goals from "./goals";
+import objectives from "./objectives";
 import inbox from "./inbox";
-import reviewDue from "./reviewDue";
-import projects from "./projects";
+import review from "./review";
 import clippings from "./clippings";
 import kcLibrary from "./kcLibrary";
 import charts from "./charts";
@@ -23,13 +21,11 @@ import calendar from "./calendar";
 /** 工作台首页 widget 注册表：按此顺序渲染 */
 export const WIDGETS: WorkbenchWidget[] = [
   statKpi,
-  todoList,
-  habitHeatmap,
+  checkin,
   recentFiles,
-  goals,
+  objectives,
   inbox,
-  reviewDue,
-  projects,
+  review,
   clippings,
   kcLibrary,
   charts,

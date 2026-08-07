@@ -65,6 +65,48 @@ const DEFAULT_SETTINGS: WorkbenchSettings = {
   sidebarCollapsed: false,
 };
 
+/** 旧组件 id → 新组件 id（重构 schedule 类时迁移） */
+const WIDGET_ID_MIGRATION: Record<string, string> = {
+  "todo-list": "agenda",
+  "habit-heatmap": "checkin",
+  "goals": "objectives",
+  "projects": "objectives",
+  "review-due": "review",
+};
+
+/** 旧 id → 新 id（保留 #N 多实例后缀，并去重） */
+function migrateWidgetList(list?: string[]): string[] | undefined {
+  if (!list) return list;
+  const out: string[] = [];
+  for (const id of list) {
+    const [base, suffix] = id.split("#");
+    const mapped = WIDGET_ID_MIGRATION[base];
+    const newId = mapped ? (suffix ? `${mapped}#${suffix}` : mapped) : id;
+    if (!out.includes(newId)) out.push(newId);
+  }
+  return out;
+}
+
+/** 迁移已保存的组件列表 / 子页列表 / 实例配置键（幂等） */
+function migrateAllWidgetIds(settings: WorkbenchSettings) {
+  settings.activeWidgets = migrateWidgetList(settings.activeWidgets)!;
+  const pw = settings.pageWidgets || {};
+  const newPw: Record<string, string[]> = {};
+  for (const [page, list] of Object.entries(pw)) {
+    newPw[page] = migrateWidgetList(list) || [];
+  }
+  settings.pageWidgets = newPw;
+  const wc = settings.widgetConfigs || {};
+  const newWc: Record<string, Record<string, unknown>> = {};
+  for (const [id, val] of Object.entries(wc)) {
+    const [base, suffix] = id.split("#");
+    const mapped = WIDGET_ID_MIGRATION[base];
+    const newId = mapped ? (suffix ? `${mapped}#${suffix}` : mapped) : id;
+    newWc[newId] = val;
+  }
+  settings.widgetConfigs = newWc;
+}
+
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -130,6 +172,7 @@ export default class KnowledgeWorkbenchPlugin extends Plugin {
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    migrateAllWidgetIds(this.settings);
   }
 
   async saveSettings() {

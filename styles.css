@@ -2980,3 +2980,60 @@ body.theme-light .dash-heat-cell.on.c1 { background: #93c5fd; }
   outline-offset: 1px;
 }
 
+/* ── agenda 今日日程（合并 todo-list + daily-progress） ── */
+.wb-agenda-kpi { margin: 2px 0 6px; }
+.wb-agenda-big {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: var(--wb-mono);
+  color: var(--wb-text);
+  line-height: 1.2;
+}
+.wb-agenda-views { display: flex; gap: 6px; margin: 2px 0 6px; }
+.wb-agenda-view {
+  flex: 1;
+  font-size: 12px;
+  padding: 4px 0;
+  text-align: center;
+  border: 1px solid var(--wb-border);
+  border-radius: 8px;
+  background: var(--wb-card);
+  color: var(--wb-sub);
+  cursor: pointer;
+  transition: all .15s;
+}
+.wb-agenda-view.on {
+  color: var(--wb-text);
+  border-color: var(--wb-gold);
+  background: rgba(251, 191, 36, .12);
+}
+.wb-agenda-list { display: flex; flex-direction: column; gap: 1px; }
+.wb-agenda-kanban { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.wb-agenda-col { background: var(--wb-card); border: 1px solid var(--wb-border); border-radius: 10px; padding: 6px; min-width: 0; }
+.wb-agenda-col-h { font-size: 11px; color: var(--wb-sub); font-weight: 600; margin-bottom: 4px; text-align: center; }
+.wb-agenda-col .wb-task { font-size: 12px; }
+.wb-agenda-col .wb-empty { text-align: center; color: var(--wb-sub); padding: 8px 0; }
+
+/* ── checkin 打卡（多习惯同屏） ── */
+.wb-checkin-body { display: flex; flex-direction: column; gap: 10px; }
+.wb-habit-block { background: var(--wb-card); border: 1px solid var(--wb-border); border-radius: 12px; padding: 8px 10px; }
+.wb-habit-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.wb-habit-toggle { font-size: 16px; cursor: pointer; line-height: 1; user-select: none; }
+.wb-habit-toggle.on { filter: drop-shadow(0 0 4px rgba(251, 191, 36, .6)); }
+.wb-habit-head .wb-name { font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-habit-streak { font-size: 11px; color: var(--wb-amber); font-family: var(--wb-mono); flex-shrink: 0; }
+
+/* ── objectives 目标与项目（合并 goals + projects） ── */
+.wb-obj { background: var(--wb-card); border: 1px solid var(--wb-border); border-radius: 12px; padding: 10px 12px; margin: 8px 0; cursor: pointer; transition: border-color .15s, transform .15s; }
+.wb-obj:hover { border-color: var(--wb-gold); transform: translateY(-1px); }
+.wb-obj-head { display: flex; align-items: baseline; gap: 8px; }
+.wb-obj-head .wb-name { font-weight: 700; font-size: 14px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-obj-goal { font-size: 11px; color: var(--wb-sub); flex-shrink: 0; }
+.wb-obj-pct { font-size: 12px; font-family: var(--wb-mono); color: var(--wb-gold); flex-shrink: 0; margin-left: 6px; }
+.wb-obj-actions { display: flex; justify-content: flex-end; margin-top: 4px; }
+.wb-obj-review { font-size: 11px; padding: 3px 10px; border-radius: 8px; border: 1px solid var(--wb-border); background: var(--wb-bg); color: var(--wb-sub); cursor: pointer; }
+.wb-obj-review:hover { border-color: var(--wb-gold); color: var(--wb-text); }
+
+/* ── bar-split（agenda 进度条修饰） ── */
+.dash-bar.bar-split { gap: 2px; }
+

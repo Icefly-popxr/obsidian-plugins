@@ -40,7 +40,7 @@ const widget: WorkbenchWidget = {
   title: "文字内容",
   icon: "📝",
   accent: DEFAULT_ACCENT,
-  category: "universal",
+  category: "notes",
   render(ctx: WidgetCtx, root: HTMLElement) {
     const cfg = readCfg(ctx);
     const instKey = ctx.instanceId;
@@ -115,17 +115,23 @@ const widget: WorkbenchWidget = {
       save();
     };
 
-    // 标题：输入框 + 同一行字号控件（标题文字与图标 emoji 跟随）
+    // 标题：输入框独占一行（拉长），字号控件放下一行
     const titleSetting = new Setting(el)
       .setName("标题")
       .setDesc("卡片标题栏文字（留空显示「文字内容」）");
-    titleSetting.addText((t) =>
+    titleSetting.addText((t) => {
       t
         .setPlaceholder("例如：本周目标")
         .setValue(String(inst.title || ""))
-        .onChange((v) => update({ title: v.trim() }))
-    );
-    addFontSizeControls(titleSetting, {
+        .onChange((v) => update({ title: v.trim() }));
+      t.inputEl.style.width = "100%";
+      t.inputEl.style.boxSizing = "border-box";
+      t.inputEl.style.minWidth = "200px";
+    });
+    const titleSizeSetting = new Setting(el)
+      .setName("标题字号")
+      .setDesc("标题文字与图标 emoji 大小（px）");
+    addFontSizeControls(titleSizeSetting, {
       value:
         typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14,
       onChange: (v) => update({ titleFontSize: v }),
