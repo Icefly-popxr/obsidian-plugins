@@ -212,19 +212,30 @@ export class WidgetConfigDrawer extends Modal {
     row.createSpan({ text: "启用（光标接近时卡片边缘发光）" });
     const sw = row.createEl("button", {
       attr: {
-        style: `position:relative;width:34px;height:18px;border-radius:999px;border:none;cursor:pointer;transition:background .2s;background:${enabled ? "var(--interactive-accent)" : "var(--background-modifier-border)"};`,
+        style: "position:relative;width:34px;height:18px;border-radius:999px;border:none;cursor:pointer;transition:background .2s;",
       },
     });
     const knob = sw.createEl("span", {
       attr: {
-        style: `position:absolute;top:2px;left:${enabled ? "16px" : "2px"};width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s;`,
+        style: "position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s;",
       },
     });
     void knob;
+
+    // 同步开关视觉状态（背景色 + knob 位置）
+    const syncVisual = (on: boolean) => {
+      sw.style.background = on
+        ? "var(--interactive-accent)"
+        : "var(--background-modifier-border)";
+      knob.style.left = on ? "16px" : "2px";
+    };
+    syncVisual(enabled);
+
     sw.addEventListener("click", () => {
-      const next = (cfg[this.instanceId] || {}).glow === false;
-      cfg[this.instanceId] = { ...(cfg[this.instanceId] || {}), glow: next ? true : false };
+      const next = !((cfg[this.instanceId] || {}).glow !== false); // 取反：关 → 开，开 → 关
+      cfg[this.instanceId] = { ...(cfg[this.instanceId] || {}), glow: next };
       this.plugin.settings.widgetConfigs = cfg;
+      syncVisual(next);
       this.plugin.saveSettings();
       saveCb();
     });

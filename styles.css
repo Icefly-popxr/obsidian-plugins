@@ -410,7 +410,7 @@ body.theme-light .workbench-container {
 .wb-topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
   padding: 8px 14px;
   border: 1px solid var(--wb-border);
@@ -575,7 +575,6 @@ body.theme-light .wb-kpi-mini .wb-num { animation: none; }
   position: relative;
   isolation: isolate;
   transform: translate3d(0, 0, 0.01px);
-  overflow: visible !important;
 }
 
 /* 三层光层共用定位 */
@@ -634,9 +633,9 @@ body.theme-light .wb-kpi-mini .wb-num { animation: none; }
   mix-blend-mode: soft-light;
 }
 
-/* 第 3 层：外部光晕（多层 box-shadow，无锥形） */
+/* 第 3 层：内部光晕（inset box-shadow，不越界，避免遮挡相邻卡片） */
 .wb-glow > .edge-light {
-  inset: calc(var(--glow-padding) * -1);
+  inset: 0;
   z-index: 1;
   opacity: calc((var(--edge-proximity) - var(--edge-sensitivity)) / (100 - var(--edge-sensitivity)));
   mix-blend-mode: plus-lighter;
@@ -1093,8 +1092,9 @@ body.theme-light .wb-bubble {
 .wb-page { display: flex; flex-direction: column; gap: 12px; }
 
 .wb-page-title {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
+  letter-spacing: 1px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1112,16 +1112,16 @@ body.theme-light .wb-bubble {
 
 .wb-back:hover { background: rgba(56, 189, 248, .1); }
 
-/* 所有子页头部轨道胶囊：标题 + 返回工作台 同处一框 */
+/* 所有子页头部轨道胶囊：标题 + 返回工作台 同处一框，样式对齐首页顶栏 */
 .wb-page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 8px 14px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: var(--wb-card);
+  border: 1px solid var(--wb-border);
 }
 .wb-page-header .wb-page-title { margin: 0; }
 .wb-page-header .wb-back {
