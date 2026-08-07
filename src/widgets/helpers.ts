@@ -4,7 +4,77 @@
  * 布局系统（initDashboardLayout）按这些 class 自动接管拖拽/缩放/位置持久化。
  */
 
-import { Setting, TextComponent } from "obsidian";
+import { App, Modal, Setting, TextComponent } from "obsidian";
+import type KnowledgeWorkbenchPlugin from "../main";
+import type { WorkbenchWidget } from "./types";
+
+/**
+ * 通用右侧抽屉配置弹窗：把某组件的 renderSettings 全部配置项
+ * 渲染到右侧边栏（Modal 靠右停靠），改配置即保存并刷新工作台。
+ * 所有通用组件共用，入口 = 组件右上角 ➕ / ⚙️。
+ */
+export class WidgetConfigDrawer extends Modal {
+  private plugin: KnowledgeWorkbenchPlugin;
+  private instanceId: string;
+  private widget: WorkbenchWidget;
+
+  constructor(
+    app: App,
+    plugin: KnowledgeWorkbenchPlugin,
+    instanceId: string,
+    widget: WorkbenchWidget
+  ) {
+    super(app);
+    this.plugin = plugin;
+    this.instanceId = instanceId;
+    this.widget = widget;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.modalEl.addClass("wb-drawer");
+    contentEl.addClass("wb-config-drawer");
+
+    // 上沿对齐左菜单栏（.wb-sidebar）顶部，不占满整屏
+    const leaves = this.app.workspace.getLeavesOfType("knowledge-workbench-view");
+    const leaf = leaves[0];
+    if (leaf) {
+      const sidebar = leaf.view.containerEl.querySelector<HTMLElement>(".wb-sidebar");
+      if (sidebar) {
+        const rect = sidebar.getBoundingClientRect();
+        this.modalEl.style.top = `${Math.max(8, rect.top)}px`;
+      }
+    }
+
+    contentEl.createEl("h3", { text: `⚙️ ${this.widget.icon} ${this.widget.title} 配置` });
+
+    const saveCb = () => {
+      this.plugin.saveSettings();
+      // 刷新已打开的工作台视图，让卡片立即更新
+      this.app.workspace.getLeavesOfType("knowledge-workbench-view").forEach((leaf) => {
+        const v = leaf.view as { reload?: () => void };
+        if (typeof v.reload === "function") v.reload();
+      });
+    };
+
+    if (typeof this.widget.renderSettings === "function") {
+      try {
+        this.widget.renderSettings(contentEl, this.plugin, this.instanceId, saveCb);
+      } catch (e) {
+        console.error(`[workbench] ${this.widget.id} renderSettings 失败`, e);
+        contentEl.createEl("p", { text: `配置渲染失败：${String(e)}` });
+      }
+    } else {
+      contentEl.createEl("p", { text: "该组件没有可配置项" });
+    }
+  }
+
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+}
 
 export interface PanelOpts {
   id: string;

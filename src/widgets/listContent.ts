@@ -1,7 +1,6 @@
-import { App, Modal, Setting } from "obsidian";
-import type KnowledgeWorkbenchPlugin from "../main";
+import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, addFontSizeControls } from "./helpers";
+import { createPanel, emptyState, addFontSizeControls, WidgetConfigDrawer } from "./helpers";
 
 /**
  * 通用清单组件（分类通用组件第二类）
@@ -29,111 +28,6 @@ interface ListContentCfg {
 }
 
 const DEFAULT_ACCENT = "#34d399";
-
-/** 清单条目右侧抽屉编辑弹窗：添加/编辑/删除/勾选条目，改动即保存 */
-class ListEditModal extends Modal {
-  private plugin: KnowledgeWorkbenchPlugin;
-  private instanceId: string;
-
-  constructor(app: App, plugin: KnowledgeWorkbenchPlugin, instanceId: string) {
-    super(app);
-    this.plugin = plugin;
-    this.instanceId = instanceId;
-  }
-
-  onOpen() {
-    const { contentEl } = this;
-    contentEl.empty();
-    // 右侧抽屉样式（作用于 modal 外壳，见 styles.css .wb-drawer）
-    this.modalEl.addClass("wb-drawer");
-    contentEl.addClass("wb-list-edit-modal");
-
-    const cfgMap = this.plugin.settings.widgetConfigs || {};
-    const inst = (cfgMap[this.instanceId] || {}) as ListContentCfg;
-    const items: ListItem[] = Array.isArray(inst.items) ? inst.items.map((x) => ({ ...x })) : [];
-
-    const save = () => {
-      cfgMap[this.instanceId] = { ...(cfgMap[this.instanceId] || {}), items: [...items] };
-      this.plugin.settings.widgetConfigs = cfgMap;
-      this.plugin.saveSettings();
-      // 刷新已打开的工作台视图，让卡片立即更新
-      this.app.workspace.getLeavesOfType("knowledge-workbench-view").forEach((leaf) => {
-        const v = leaf.view as { reload?: () => void };
-        if (typeof v.reload === "function") v.reload();
-      });
-    };
-
-    contentEl.createEl("h3", { text: "📋 编辑清单条目" });
-    const listWrap = contentEl.createDiv({ cls: "wb-list-editor" });
-
-    const renderEditor = () => {
-      listWrap.empty();
-      items.forEach((it, i) => {
-        const row = listWrap.createDiv({
-          attr: { style: "display:flex;align-items:center;gap:6px;margin-bottom:6px;" },
-        });
-        const textInput = row.createEl("input");
-        textInput.placeholder = "条目文字";
-        textInput.value = it.text;
-        textInput.style.flex = "1";
-        textInput.style.padding = "4px 8px";
-        textInput.style.fontSize = "12px";
-        textInput.style.borderRadius = "6px";
-        textInput.style.border = "1px solid var(--background-modifier-border)";
-        textInput.addEventListener("input", () => {
-          items[i].text = textInput.value;
-          save();
-        });
-        const tagInput = row.createEl("input");
-        tagInput.placeholder = "标签";
-        tagInput.value = it.tag || "";
-        tagInput.style.width = "64px";
-        tagInput.style.padding = "4px 8px";
-        tagInput.style.fontSize = "12px";
-        tagInput.style.borderRadius = "6px";
-        tagInput.style.border = "1px solid var(--background-modifier-border)";
-        tagInput.addEventListener("input", () => {
-          items[i].tag = tagInput.value.trim();
-          save();
-        });
-        const doneBtn = row.createEl("button", {
-          text: it.done ? "✓" : "○",
-          attr: { title: "勾选状态" },
-        });
-        doneBtn.style.cursor = "pointer";
-        doneBtn.style.fontSize = "13px";
-        doneBtn.addEventListener("click", () => {
-          items[i].done = !items[i].done;
-          doneBtn.setText(items[i].done ? "✓" : "○");
-          save();
-        });
-        const del = row.createEl("button", { text: "🗑" });
-        del.style.cursor = "pointer";
-        del.style.fontSize = "12px";
-        del.addEventListener("click", () => {
-          items.splice(i, 1);
-          save();
-          renderEditor();
-        });
-      });
-      const addBtn = listWrap.createEl("button", {
-        text: "➕ 添加条目",
-        attr: { style: "font-size:12px;padding:4px 12px;border-radius:6px;cursor:pointer;" },
-      });
-      addBtn.addEventListener("click", () => {
-        items.push({ text: "", done: false });
-        save();
-        renderEditor();
-      });
-    };
-    renderEditor();
-  }
-
-  onClose() {
-    const { contentEl } = this;
-    contentEl.empty();
-  }
-}
 
 function readCfg(ctx: WidgetCtx): ListContentCfg {
   const cfg = (ctx.widgetConfig || {}) as ListContentCfg;
@@ -165,7 +59,7 @@ const widget: WorkbenchWidget = {
       accent: DEFAULT_ACCENT,
       moreLabel: "➕",
       onMore: () => {
-        new ListEditModal(ctx.app, ctx.plugin, ctx.instanceId).open();
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
       },
     });
 

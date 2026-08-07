@@ -2621,17 +2621,16 @@ body.theme-light .dash-heat-cell.on.c1 { background: #93c5fd; }
   color: #fff;
 }
 
-/* ── 清单条目右侧抽屉弹窗 ── */
+/* ── 通用右侧抽屉弹窗 ── */
 .modal.wb-drawer {
   position: fixed;
   right: 0;
-  top: 0;
   bottom: 0;
   margin: 0;
-  height: 100vh;
-  max-height: 100vh;
+  /* top 由 JS 动态对齐左菜单栏上沿（见 WidgetConfigDrawer） */
   width: 380px;
   max-width: 92vw;
+  max-height: 100vh;
   border-radius: 0;
   border: none;
   border-left: 1px solid var(--background-modifier-border);

@@ -1,6 +1,6 @@
 import { App, Modal, Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, addFontSizeControls } from "./helpers";
+import { createPanel, addFontSizeControls, WidgetConfigDrawer } from "./helpers";
 
 /**
  * 通用日历组件（分类通用组件第三类）
@@ -124,6 +124,10 @@ const widget: WorkbenchWidget = {
       title: cfg.title || "日历",
       icon: cfg.icon || "📅",
       accent: DEFAULT_ACCENT,
+      moreLabel: "⚙️",
+      onMore: () => {
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+      },
     });
 
     const marks = cfg.marks || {};

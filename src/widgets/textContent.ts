@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, addFontSizeControls } from "./helpers";
+import { createPanel, emptyState, addFontSizeControls, WidgetConfigDrawer } from "./helpers";
 
 /**
  * 通用文字内容组件（分类通用组件第一类，验证"配置驱动"模式）
@@ -50,6 +50,10 @@ const widget: WorkbenchWidget = {
       title: cfg.title || "文字内容",
       icon: cfg.icon || "📝",
       accent: DEFAULT_ACCENT,
+      moreLabel: "⚙️",
+      onMore: () => {
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+      },
     });
 
     // 标题栏字号：应用到标题文字 + 图标 emoji（跟随自适应）
