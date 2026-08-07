@@ -16,7 +16,6 @@
   "author": "IceFly",
   "license": "MIT",
   "devDependencies": {
-    "@esbuild/linux-x64": "^0.28.1",
     "@types/node": "^20.11.0",
     "builtin-modules": "^3.3.0",
     "esbuild": "^0.19.11",
