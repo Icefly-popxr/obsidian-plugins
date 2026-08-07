@@ -78,6 +78,8 @@ const widget: WorkbenchWidget = {
       row.createSpan({ cls: "wb-name", text: name });
       row.createSpan({ cls: "wb-meta", text: String(n) });
     }
+    // 内容渲染完成后应用正文字号（此时 .wb-name/.wb-meta 元素已存在）
+    applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
   },
   renderSettings(el, plugin, instanceId, save) {
     const cfgMap = plugin.settings.widgetConfigs || {};

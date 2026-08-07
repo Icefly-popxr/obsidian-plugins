@@ -1168,22 +1168,7 @@ body.theme-light .wb-bubble {
 .wb-compass .needle-s { fill: var(--wb-sub); }
 .wb-compass .hub { fill: var(--wb-gold); stroke: var(--wb-bg); stroke-width: 1.5; }
 
-/* ── 日月背景（右上角，随主题切换） ── */
-.wb-sky {
-  position: fixed;
-  top: 12px;
-  right: 14px;
-  width: 72px;
-  height: 72px;
-  z-index: 0;
-  pointer-events: none;
-  opacity: .85;
-}
-
-.wb-sky .wb-moon { display: none; }
-.wb-sky .wb-sun { display: none; }
-.theme-dark .wb-sky .wb-moon { display: block; }
-.theme-light .wb-sky .wb-sun { display: block; }
+/* ── 日月背景已移除（2026-08-08：动效注册表改造，保留气泡/海浪/罗盘 + 头图熔岩） ── */
 
 /* ── 色系切换按钮（顶栏工具区） ── */
 .wb-theme-btn {

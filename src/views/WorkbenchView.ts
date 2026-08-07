@@ -34,7 +34,6 @@ import {
   NEWS_CAT_TITLES,
 } from "../services/newsService";
 import { TFile } from "obsidian";
-import { MoltenBackground } from "../backgrounds/MoltenBackground";
 import { WIDGETS, getWidget, CATEGORIES, groupWidgetsByCategory } from "../widgets/registry";
 import { loadSharedData, saveSharedData, SharedData, defaultSharedData } from "../services/sharedStore";
 import { DashboardLayoutManager } from "./dashboardLayout";
@@ -62,7 +61,8 @@ export class WorkbenchView extends ItemView {
   plugin: KnowledgeWorkbenchPlugin;
   private page: Page = "home";
   private data: LoadedData | null = null;
-  private molten: MoltenBackground | null = null;
+  /** 已构建动效的清理函数（重渲染 / 关闭视图时统一释放，如 WebGL 上下文） */
+  private effectDisposers: Array<() => void> = [];
   private bgLayer: HTMLElement | null = null;
   /** 共享数据（vault 00_工具/工作台数据.json，与 Web 端共用一份） */
   private sharedData: SharedData = defaultSharedData();
@@ -95,13 +95,22 @@ export class WorkbenchView extends ItemView {
   }
 
   async onClose() {
-    if (this.molten) {
-      this.molten.unmount();
-      this.molten = null;
-    }
+    this.disposeEffects();
     this.cleanupWidgets();
     this.bgLayer = null;
     this.containerEl.empty();
+  }
+
+  /** 释放已构建的背景动效资源 */
+  private disposeEffects() {
+    for (const dispose of this.effectDisposers) {
+      try {
+        dispose();
+      } catch (e) {
+        console.error("[workbench] 动效释放失败", e);
+      }
+    }
+    this.effectDisposers = [];
   }
 
   /** 清理所有已启用 widget 的实例资源（window 监听 / observer 等） */
@@ -196,10 +205,7 @@ export class WorkbenchView extends ItemView {
     const wrap = this.containerEl.createDiv({ cls: "workbench-container" });
 
     // 每次渲染重建（DOM 已清空，旧引用失效），先释放旧 WebGL 上下文与 widget 资源
-    if (this.molten) {
-      this.molten.unmount();
-      this.molten = null;
-    }
+    this.disposeEffects();
     this.cleanupWidgets();
     this.bgLayer = null;
 
@@ -208,9 +214,10 @@ export class WorkbenchView extends ItemView {
     const main = wrap.createDiv({ cls: "wb-main" });
     this.buildHero(main);
 
-    if (this.plugin.settings.showEffects) {
-      buildEffects(wrap);
-    }
+    // 页面级动效（气泡 / 海浪 / 罗盘）：按注册表分项开关构建
+    this.effectDisposers.push(
+      ...buildEffects(wrap, "page", this.plugin.settings.effects, this.plugin.settings.showEffects)
+    );
 
     if (!this.data) {
       main.createDiv({ cls: "wb-empty", text: "⛵ 正在探索海域…" });
@@ -307,30 +314,11 @@ export class WorkbenchView extends ItemView {
       this.reload();
     });
 
-    // 熔岩动态容器（WebGL，叠加在内置全员图上）；自定义头图/视频时不叠加，避免遮挡
+    // 头图级动效（熔岩 WebGL）：自定义头图/视频时不叠加，避免遮挡
     if (!media) {
-      const moltenHost = hero.createDiv({ cls: "wb-hero-molten" });
-      this.molten = new MoltenBackground();
-      this.molten.mount(moltenHost, {
-      color1: "#5227FF",   // 蓝紫（原版 MoltenMetal 配色）
-      color2: "#FF9FFC",   // 粉
-      color3: "#FFFFFF",   // 白
-      speed: 0.35,
-      scale: 4,
-      detail: 3,
-      glow: 1.6,
-      coreSize: 0.1,
-      swirl: 1,
-      fold: -0.2,
-      blackPoint: 0.05,
-      brightness: 1.3,
-      colorMode: "molten",
-      grain: true,
-      grainIntensity: 0.05,
-      mouseInteraction: true,
-      mouseStrength: 0.3,
-      opacity: 1.0,
-      });
+      this.effectDisposers.push(
+        ...buildEffects(hero, "hero", this.plugin.settings.effects, this.plugin.settings.showEffects)
+      );
     }
 
     // 右下角固定功能按钮（参考图胶囊样式，按钮显隐/布局可配置）

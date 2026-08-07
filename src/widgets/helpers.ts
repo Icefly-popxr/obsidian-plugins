@@ -410,6 +410,8 @@ export function applyBodyFontSize(bd: HTMLElement, bodyFontSize: number): void {
     ".wb-cal-dow", ".wb-cal-badge", ".wb-cal-label",
     ".wb-icon-cell-label", ".wb-num", ".wb-lbl",
     ".bar-pct", ".mg-lb-name", ".mg-count", ".mg-label",
+    ".dash-big", ".dash-stat-num", ".dash-stat-label",
+    ".dir-label", ".dir-count",
   ].join(",");
   bd.querySelectorAll<HTMLElement>(SEL).forEach((el) => {
     el.style.fontSize = size;

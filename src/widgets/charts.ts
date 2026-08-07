@@ -107,13 +107,14 @@ function computeData(ctx: WidgetCtx, source: ChartSource): [string, number][] {
 
 const COLORS = ["#8b5cf6", "#38bdf8", "#34d399", "#fbbf24", "#f472b6", "#e11d2e", "#22d3ee"];
 
-/** 在容器内绘制图表（柱状/折线/饼图共用 canvas） */
+/** 在容器内绘制图表（柱状/折线/饼图共用 canvas），labelFontSize 为正文标签字号 */
 function drawChart(
   container: HTMLElement,
   type: ChartType,
   data: [string, number][],
   showValues: boolean,
-  showLegend: boolean
+  showLegend: boolean,
+  labelFontSize: number
 ) {
   if (data.length === 0) return;
   const w = 300;
@@ -130,6 +131,8 @@ function drawChart(
   if (!g) return;
   g.scale(dpr, dpr);
   g.clearRect(0, 0, w, h);
+  const fs = `${labelFontSize}px sans-serif`;
+  const fsSmall = `${Math.max(8, labelFontSize - 1)}px sans-serif`;
 
   const max = Math.max(...data.map(([, v]) => v), 1);
 
@@ -153,7 +156,7 @@ function drawChart(
       if (showValues) {
         const mid = start + ang / 2;
         g.fillStyle = "#fff";
-        g.font = "9px sans-serif";
+        g.font = fs;
         g.textAlign = "center";
         g.fillText(String(v), cx + Math.cos(mid) * r * 0.6, cy + Math.sin(mid) * r * 0.6 + 3);
       }
@@ -165,7 +168,7 @@ function drawChart(
         g.fillStyle = COLORS[i % COLORS.length];
         g.fillRect(w - 66, ly - 8, 8, 8);
         g.fillStyle = "#8d9ab0";
-        g.font = "9px sans-serif";
+        g.font = fs;
         g.textAlign = "left";
         g.fillText(`${label} ${v}`, w - 54, ly);
         ly += 15;
@@ -190,7 +193,7 @@ function drawChart(
     g.lineTo(w, y);
     g.stroke();
     g.fillStyle = "#7d8ba1";
-    g.font = "8px sans-serif";
+    g.font = fsSmall;
     g.textAlign = "right";
     g.fillText(String(v), padL - 4, y + 3);
   }
@@ -208,12 +211,12 @@ function drawChart(
       g.fillRect(x, y, bw * 0.7, hgt);
       if (showValues) {
         g.fillStyle = "#c3cbd8";
-        g.font = "8px sans-serif";
+        g.font = fsSmall;
         g.textAlign = "center";
         g.fillText(String(v), x + bw * 0.35, y - 2);
       }
       g.fillStyle = "#8d9ab0";
-      g.font = "8px sans-serif";
+      g.font = fsSmall;
       g.textAlign = "center";
       g.fillText(String(label), padL + i * bw + bw / 2, padT + plotH + 12);
     });
@@ -238,12 +241,12 @@ function drawChart(
       g.fill();
       if (showValues) {
         g.fillStyle = "#c3cbd8";
-        g.font = "8px sans-serif";
+        g.font = fsSmall;
         g.textAlign = "center";
         g.fillText(String(v), x, y - 6);
       }
       g.fillStyle = "#8d9ab0";
-      g.font = "8px sans-serif";
+      g.font = fsSmall;
       g.textAlign = "center";
       g.fillText(String(label), x, padT + plotH + 12);
     });
@@ -292,7 +295,7 @@ const widget: WorkbenchWidget = {
     }
 
     const chartBox = bd.createDiv({ cls: "wb-chart-box" });
-    drawChart(chartBox, cfg.chartType || "bar", data, cfg.showValues !== false, cfg.showLegend !== false);
+    drawChart(chartBox, cfg.chartType || "bar", data, cfg.showValues !== false, cfg.showLegend !== false, bodyFontSizeOf(ctx.widgetConfig));
     // 内容渲染完成后应用正文字号
     applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
   },

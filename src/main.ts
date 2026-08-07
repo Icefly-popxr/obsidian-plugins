@@ -4,12 +4,15 @@ import { HabitData, defaultHabits } from "./services/habitService";
 import { EnglishRecord } from "./services/englishService";
 import { WIDGETS, getWidget } from "./widgets/registry";
 import { migrateSharedFromDataJson } from "./services/sharedStore";
+import { EFFECTS, defaultEffectFlags } from "./views/effects";
 
 interface WorkbenchSettings {
   /** 知识库根目录（相对库根的路径，留空 = 库根） */
   knowledgeBasePath: string;
-  /** 是否显示背景动效（气泡/海浪/罗盘） */
+  /** 背景动效总开关（关闭 = 所有动效停用，含头图熔岩） */
   showEffects: boolean;
+  /** 背景动效分项开关：EFFECTS 注册表 id -> 是否开启（缺省回落到该项默认值） */
+  effects: Record<string, boolean>;
   /** 是否开启卡片光圈效果（全局统一开关，所有组件一致） */
   showGlow: boolean;
   /** 复习字段名（KC 卡 frontmatter 中的复习日期字段） */
@@ -75,6 +78,7 @@ export const DEFAULT_HERO_ACTIONS = {
 const DEFAULT_SETTINGS: WorkbenchSettings = {
   knowledgeBasePath: "",
   showEffects: true,
+  effects: defaultEffectFlags(),
   showGlow: true,
   reviewField: "review",
   habitNoteFolder: "01 - Projects 项目/打卡",
@@ -287,12 +291,26 @@ export default class KnowledgeWorkbenchPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const raw = ((await this.loadData()) || {}) as Partial<WorkbenchSettings>;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
     migrateAllWidgetIds(this.settings);
     // 兼容旧版：heroImageDataUrl → heroMedia（image）
     if (this.settings.heroImageDataUrl && !this.settings.heroMedia) {
       this.settings.heroMedia = { kind: "image", src: this.settings.heroImageDataUrl };
     }
+    // 兼容旧版：无分项开关表 → 页面动效沿用旧 showEffects，头图熔岩保持默认开启；
+    // 已有分项表时，为新增动效补齐默认值（幂等）
+    const rawFlags = raw.effects;
+    const flags: Record<string, boolean> = rawFlags ? Object.assign({}, rawFlags) : {};
+    for (const eff of EFFECTS) {
+      if (typeof flags[eff.id] === "boolean") continue;
+      flags[eff.id] = rawFlags
+        ? eff.defaultOn
+        : eff.scope === "page"
+          ? this.settings.showEffects !== false
+          : eff.defaultOn;
+    }
+    this.settings.effects = flags;
   }
 
   async saveSettings() {
@@ -327,18 +345,49 @@ class WorkbenchSettingTab extends PluginSettingTab {
           })
       );
 
+    // ── 背景动效：总开关 + 分项开关（分项由 EFFECTS 注册表自动生成，新增动效无需改此处） ──
     new Setting(containerEl)
-      .setName("背景动效")
-      .setDesc("是否显示气泡上浮 / 海浪 / 罗盘摆动等背景动效")
+      .setName("背景动效（总开关）")
+      .setDesc("关闭后下方所有动效一并停用")
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.showEffects)
           .onChange(async (value) => {
             this.plugin.settings.showEffects = value;
             await this.plugin.saveSettings();
+            this.display(); // 重绘：分项随总开关置灰/恢复
             new Notice("动效设置已更新，重新打开工作台生效");
           })
       );
+
+    const effectsBox = containerEl.createDiv();
+    effectsBox.style.marginLeft = "18px";
+    effectsBox.style.paddingLeft = "12px";
+    effectsBox.style.borderLeft = "2px solid var(--background-modifier-border)";
+    if (!this.plugin.settings.showEffects) {
+      effectsBox.style.opacity = "0.45";
+      effectsBox.style.pointerEvents = "none";
+    }
+    for (const eff of EFFECTS) {
+      const scopeTag = eff.scope === "hero" ? "［头图］" : "［页面］";
+      new Setting(effectsBox)
+        .setName(`${eff.icon} ${eff.name}`)
+        .setDesc(`${scopeTag}${eff.desc}`)
+        .addToggle((toggle) =>
+          toggle
+            .setValue(
+              typeof this.plugin.settings.effects?.[eff.id] === "boolean"
+                ? this.plugin.settings.effects[eff.id]
+                : eff.defaultOn
+            )
+            .onChange(async (value) => {
+              if (!this.plugin.settings.effects) this.plugin.settings.effects = {};
+              this.plugin.settings.effects[eff.id] = value;
+              await this.plugin.saveSettings();
+              new Notice(`${eff.name} 已${value ? "开启" : "关闭"}，重新打开工作台生效`);
+            })
+        );
+    }
 
     new Setting(containerEl)
       .setName("光圈效果")
