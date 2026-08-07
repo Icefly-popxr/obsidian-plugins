@@ -2601,6 +2601,106 @@ body.theme-light .dash-heat-cell.on.c1 { background: #93c5fd; }
   background: rgba(139, 92, 246, .06);
 }
 
+/* ── list 清单组件 ── */
+.wb-list-items .wb-box {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--wb-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .15s, border-color .15s;
+}
+.wb-list-items .wb-box.on {
+  background: #10b981;
+  border-color: #10b981;
+  color: #fff;
+}
+
+/* ── 日历组件 ── */
+.wb-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.wb-cal-nav button {
+  border: 1px solid var(--wb-border);
+  background: var(--background-modifier-form-field);
+  color: var(--text-normal);
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.wb-cal-nav button:hover {
+  background: var(--background-modifier-hover);
+}
+.wb-cal-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.wb-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.wb-cal-dow {
+  text-align: center;
+  font-size: 10px;
+  color: var(--wb-sub);
+  padding: 2px 0;
+}
+.wb-cal-cell {
+  position: relative;
+  text-align: center;
+  font-size: 12px;
+  padding: 4px 0 6px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  min-height: 24px;
+}
+.wb-cal-cell:hover {
+  background: rgba(56, 189, 248, .08);
+  border-color: rgba(56, 189, 248, .25);
+}
+.wb-cal-cell.empty {
+  cursor: default;
+}
+.wb-cal-cell.empty:hover {
+  background: transparent;
+  border-color: transparent;
+}
+.wb-cal-cell.today {
+  border-color: var(--wb-gold, #fbbf24);
+  font-weight: 700;
+}
+.wb-cal-cell.marked {
+  background: rgba(56, 189, 248, .12);
+}
+.wb-cal-badge {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8px;
+  line-height: 1;
+  color: var(--wb-blue);
+  max-width: 90%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* ═══════════ 英语打卡（移植自 Web 端 dashboard Checkin） ═══════════ */
 /* ── 背景音乐播放器（board 页） ── */
 .dash-music-row {
