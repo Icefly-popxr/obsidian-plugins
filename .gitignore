@@ -1,4 +1,6 @@
 node_modules/
-main.js
 *.map
 .DS_Store
+
+# main.js 是构建产物，但这里刻意提交，
+# 便于 clone 到 .obsidian/plugins/ 后免构建直接启用

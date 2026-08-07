@@ -5,6 +5,25 @@
 
 ---
 
+## 🚀 安装（clone 即用）
+
+仓库已包含构建产物 `main.js`，**无需 npm install / build**，clone 下来就能直接启用。
+
+```bash
+cd "<你的 Vault>/.obsidian/plugins"
+git clone git@github.com:Icefly-popxr/obsidian-plugins.git knowledge-workbench
+```
+
+> 目录名必须是 `knowledge-workbench`（要和 `manifest.json` 的 `id` 一致）。
+
+然后 Obsidian → 设置 → 第三方插件 → 刷新列表 → 启用「知识库工作台」。
+
+更新：`cd knowledge-workbench && git pull`，再 Ctrl+P → `Reload app without saving`。
+
+需要改代码时再 `npm install` 装开发依赖。
+
+---
+
 ## ⚠️ 目录分工（最重要的约定）
 
 | 区域 | 路径 | 作用 |
