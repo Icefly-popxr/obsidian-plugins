@@ -482,6 +482,47 @@ body.theme-light .workbench-container {
 
 body.theme-light .wb-kpi-card .wb-num { animation: none; }
 
+/* ── 数据统计组件（stat-kpi 面板内 KPI 卡网格，避免被自由布局单独定位） ── */
+.wb-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.wb-kpi-mini {
+  position: relative;
+  background: var(--wb-card);
+  border: 1px solid var(--wb-border);
+  border-radius: 14px;
+  padding: 8px 6px;
+  text-align: center;
+  overflow: hidden;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s;
+}
+.wb-kpi-mini:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .25);
+  border-color: var(--wb-gold);
+}
+.wb-kpi-mini .wb-ico {
+  margin: 0 auto 2px;
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
+}
+.wb-kpi-mini .wb-num {
+  font-family: var(--wb-mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--wb-gold);
+  animation: wb-glow 3.5s ease-in-out infinite;
+}
+body.theme-light .wb-kpi-mini .wb-num { animation: none; }
+.wb-kpi-mini .wb-lbl {
+  font-size: 10px;
+  color: var(--wb-sub);
+  margin-top: 2px;
+}
+
 /* ═══════════ Border Glow（React Bits 移植：cursor 驱动 mesh gradient） ═══════════ */
 .wb-glow {
   --edge-proximity: 60;

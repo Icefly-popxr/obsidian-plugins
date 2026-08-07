@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { addFontSizeControls, WidgetConfigDrawer } from "./helpers";
+import { createPanel, addFontSizeControls, WidgetConfigDrawer } from "./helpers";
 import { buildHabitRecords, lastNDays } from "../services/habitService";
 
 /**
@@ -128,28 +128,37 @@ const widget: WorkbenchWidget = {
   category: "stats",
   render(ctx: WidgetCtx, root: HTMLElement) {
     const cfg = readCfg(ctx);
-
-    // 标题栏字号（含图标 emoji 跟随）
     const titleFontSize = cfg.titleFontSize || 14;
     const items = cfg.items || DEFAULT_ITEMS;
 
-    // 标题栏：左上角统计图标 + 右上角 ⚙️ 入口
-    const head = root.createDiv({ cls: "wb-kpi-head" });
-    const headLeft = head.createDiv({ cls: "wb-kpi-head-left" });
-    const ico = headLeft.createDiv({ cls: "wb-ico", text: "📊" });
-    const titleEl = headLeft.createSpan({ cls: "wb-title", text: "数据统计" });
-    ico.style.fontSize = `${titleFontSize}px`;
-    ico.style.width = `${titleFontSize + 8}px`;
-    ico.style.height = `${titleFontSize + 8}px`;
-    titleEl.style.fontSize = `${titleFontSize}px`;
-    const gear = head.createDiv({ cls: "wb-more", text: "⚙️" });
-    gear.addEventListener("click", () => {
-      new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+    const bd = createPanel(root, {
+      id: "stat-kpi",
+      title: "数据统计",
+      icon: "📊",
+      accent: DEFAULT_ACCENT,
+      moreLabel: "⚙️",
+      onMore: () => {
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+      },
     });
 
+    // 标题栏字号（含图标 emoji 跟随）
+    const panel = bd.closest(".wb-panel");
+    if (panel) {
+      const ico = panel.querySelector<HTMLElement>(".wb-ico");
+      const titleEl = panel.querySelector<HTMLElement>(".wb-title");
+      if (ico) {
+        ico.style.fontSize = `${titleFontSize}px`;
+        ico.style.width = `${titleFontSize + 8}px`;
+        ico.style.height = `${titleFontSize + 8}px`;
+      }
+      if (titleEl) titleEl.style.fontSize = `${titleFontSize}px`;
+    }
+
+    // KPI 卡网格：用独立类名，避免被自由布局系统（.wb-kpi-card）单独绝对定位
+    const grid = bd.createDiv({ cls: "wb-kpi-grid" });
     items.slice(0, 9).forEach((it, i) => {
-      const card = root.createDiv({ cls: "wb-kpi-card" });
-      card.dataset.id = `stat-${i}`;
+      const card = grid.createDiv({ cls: "wb-kpi-mini" });
       card.createDiv({ cls: "wb-ico", text: it.icon || DEFAULT_ICONS[it.metric] });
       card.createDiv({ cls: "wb-num", text: computeMetric(ctx, it.metric) });
       card.createDiv({ cls: "wb-lbl", text: it.label || METRIC_LABELS[it.metric] });
