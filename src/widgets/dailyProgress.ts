@@ -176,6 +176,8 @@ const widget: WorkbenchWidget = {
       };
       stats.forEach(([num, label]) => mkStat(num, label));
     }
+    // 内容渲染完成后应用正文字号（bar-pct / 统计数字标签等）
+    applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
   },
   renderSettings(el, plugin, instanceId, save) {
     const cfgMap = plugin.settings.widgetConfigs || {};

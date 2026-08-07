@@ -1,6 +1,6 @@
 import { Setting, TFile } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, WidgetConfigDrawer, applyTitleFontSize, addTitleConfig } from "./helpers";
+import { createPanel, WidgetConfigDrawer, applyTitleFontSize, addTitleConfig, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 
 /**
  * 媒体画廊组件（移植自 modular-theme-dashboard 的 media-gallery）
@@ -106,6 +106,8 @@ const widget: WorkbenchWidget = {
 
     // ── 网格容器 ──
     const grid = bd.createDiv({ cls: "mg-grid" });
+    // 内容渲染完成后应用正文字号（工具栏标签/计数）
+    applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
 
     const applyDisplayMode = () => {
       grid.removeClass("mg-grid-square");

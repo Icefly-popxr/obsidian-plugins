@@ -1,6 +1,6 @@
 import { Setting, TFolder, TAbstractFile, TFile } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, WidgetConfigDrawer, applyTitleFontSize, addTitleConfig } from "./helpers";
+import { createPanel, emptyState, WidgetConfigDrawer, applyTitleFontSize, addTitleConfig, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 
 /**
  * 目录组件（移植自 modular-theme-dashboard 的 directory）
@@ -166,6 +166,8 @@ const widget: WorkbenchWidget = {
       return;
     }
     renderFolder(tree, rootFolder as TFolder);
+    // 内容渲染完成后应用正文字号（目录标签/计数）
+    applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
   },
   renderSettings(el, plugin, instanceId, save) {
     const cfg = plugin.settings.widgetConfigs || {};

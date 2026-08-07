@@ -216,6 +216,8 @@ const widget: WorkbenchWidget = {
           }).open();
         });
       }
+      // 内容渲染完成后应用正文字号（星期表头/日期/标记）
+      applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
     };
 
     // 标题行：上/下月切换 + 年月

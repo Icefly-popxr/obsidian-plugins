@@ -109,6 +109,8 @@ const widget: WorkbenchWidget = {
       cell.createDiv({ cls: "wb-icon-cell-label", text: it.label || "" });
       cell.addEventListener("click", () => runAction(ctx, it.action));
     });
+    // 内容渲染完成后应用正文字号（图标下方标签文字）
+    applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
   },
   renderSettings(el, plugin, instanceId, save) {
     const cfgMap = plugin.settings.widgetConfigs || {};

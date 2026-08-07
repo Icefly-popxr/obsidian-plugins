@@ -401,10 +401,17 @@ export function applyTitleFontSize(bd: HTMLElement, titleFontSize: number): void
   if (titleEl) titleEl.style.fontSize = `${titleFontSize}px`;
 }
 
-/** 渲染侧：把正文字号应用到面板内容区的正文元素（列表条目/时间戳/标签/徽章） */
+/** 渲染侧：把正文字号应用到面板内容区的正文元素（列表条目/时间戳/标签/徽章/数值等） */
 export function applyBodyFontSize(bd: HTMLElement, bodyFontSize: number): void {
   const size = `${bodyFontSize}px`;
-  bd.querySelectorAll<HTMLElement>(".wb-name, .wb-meta, .wb-tag, .wb-badge").forEach((el) => {
+  const SEL = [
+    ".wb-name", ".wb-meta", ".wb-tag", ".wb-badge",
+    ".wb-habit-streak", ".wb-obj-goal", ".wb-obj-pct",
+    ".wb-cal-dow", ".wb-cal-badge", ".wb-cal-label",
+    ".wb-icon-cell-label", ".wb-num", ".wb-lbl",
+    ".bar-pct", ".mg-lb-name", ".mg-count", ".mg-label",
+  ].join(",");
+  bd.querySelectorAll<HTMLElement>(SEL).forEach((el) => {
     el.style.fontSize = size;
   });
 }

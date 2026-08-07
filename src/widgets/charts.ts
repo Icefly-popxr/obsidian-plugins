@@ -293,6 +293,8 @@ const widget: WorkbenchWidget = {
 
     const chartBox = bd.createDiv({ cls: "wb-chart-box" });
     drawChart(chartBox, cfg.chartType || "bar", data, cfg.showValues !== false, cfg.showLegend !== false);
+    // 内容渲染完成后应用正文字号
+    applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
   },
   renderSettings(el, plugin, instanceId, save) {
     const cfgMap = plugin.settings.widgetConfigs || {};

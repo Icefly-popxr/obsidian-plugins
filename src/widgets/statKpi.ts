@@ -164,6 +164,8 @@ const widget: WorkbenchWidget = {
       card.createDiv({ cls: "wb-num", text: computeMetric(ctx, it.metric) });
       card.createDiv({ cls: "wb-lbl", text: it.label || METRIC_LABELS[it.metric] });
     });
+    // 内容渲染完成后应用正文字号（KPI 数值/标签）
+    applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
   },
   renderSettings(el, plugin, instanceId, save) {
     const cfgMap = plugin.settings.widgetConfigs || {};
