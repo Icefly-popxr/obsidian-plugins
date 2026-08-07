@@ -43,8 +43,10 @@ const widget: WorkbenchWidget = {
       title: cfg.title || "采集汇总",
       icon: cfg.icon || "📚",
       accent: DEFAULT_ACCENT,
-      moreLabel: "查看",
-      onMore: () => ctx.goto("config"),
+      moreLabel: "⚙️",
+      onMore: () => {
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+      },
     });
 
     // 标题栏字号（含图标 emoji 跟随）

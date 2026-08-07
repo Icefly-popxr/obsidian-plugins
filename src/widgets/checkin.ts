@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, applyTitleFontSize, addTitleConfig } from "./helpers";
+import { createPanel, emptyState, applyTitleFontSize, addTitleConfig, WidgetConfigDrawer } from "./helpers";
 import { buildHabitRecords, toggleHabit, lastNDays, HabitRecord } from "../services/habitService";
 
 interface CheckinCfg {
@@ -32,8 +32,10 @@ const widget: WorkbenchWidget = {
       title: String(cfg.title || "打卡"),
       icon: String(cfg.icon || "🔥"),
       accent: "#f59e0b",
-      moreLabel: `${days} 天`,
-      onMore: () => ctx.goto("board"),
+      moreLabel: "⚙️",
+      onMore: () => {
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+      },
     });
     applyTitleFontSize(bd, Number(cfg.titleFontSize) || 14);
 

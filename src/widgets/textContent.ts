@@ -147,7 +147,7 @@ const widget: WorkbenchWidget = {
           .onChange((v) => update({ icon: v.trim() }))
       );
 
-    // 正文：输入框 + 同一行字号控件
+    // 正文：输入框独占一行（拉长），字号控件放下一行
     const bodySetting = new Setting(el)
       .setName("正文")
       .setDesc("支持多行文字，直接输入即可（空内容时卡片显示占位提示）");
@@ -156,10 +156,14 @@ const widget: WorkbenchWidget = {
       ta.setValue(String(inst.text || ""));
       ta.inputEl.rows = 5;
       ta.inputEl.style.width = "100%";
+      ta.inputEl.style.boxSizing = "border-box";
       ta.inputEl.style.fontSize = "13px";
       ta.onChange((v) => update({ text: v }));
     });
-    addFontSizeControls(bodySetting, {
+    const bodySizeSetting = new Setting(el)
+      .setName("正文字号")
+      .setDesc("正文字号大小（px）");
+    addFontSizeControls(bodySizeSetting, {
       value: typeof inst.fontSize === "number" && inst.fontSize > 0 ? inst.fontSize : 14,
       onChange: (v) => update({ fontSize: v }),
     });

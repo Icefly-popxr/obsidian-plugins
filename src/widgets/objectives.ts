@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, applyTitleFontSize, addTitleConfig } from "./helpers";
+import { createPanel, emptyState, applyTitleFontSize, addTitleConfig, WidgetConfigDrawer } from "./helpers";
 import type { Project } from "../services/projectService";
 import { openFile } from "../services/vaultService";
 
@@ -35,7 +35,10 @@ const widget: WorkbenchWidget = {
       title: String(cfg.title || "目标与项目"),
       icon: String(cfg.icon || "🎯"),
       accent: "#8b5cf6",
-      moreLabel: `${ctx.data.projects.length} 个`,
+      moreLabel: "⚙️",
+      onMore: () => {
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+      },
     });
     applyTitleFontSize(bd, Number(cfg.titleFontSize) || 14);
 

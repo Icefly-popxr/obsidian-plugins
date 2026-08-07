@@ -43,8 +43,10 @@ const widget: WorkbenchWidget = {
       title: cfg.title || "灵感 Inbox",
       icon: cfg.icon || "📥",
       accent: DEFAULT_ACCENT,
-      moreLabel: `${ctx.data.inbox.length} 条`,
-      onMore: () => ctx.goto("domains"),
+      moreLabel: "⚙️",
+      onMore: () => {
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+      },
     });
 
     // 标题栏字号（含图标 emoji 跟随）

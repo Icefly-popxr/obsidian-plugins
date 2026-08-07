@@ -660,27 +660,7 @@ export class WorkbenchView extends ItemView {
     const topbar = container.createDiv({ cls: "wb-topbar" });
     const title = topbar.createDiv({ cls: "wb-title" });
     title.createSpan({ text: "🏴‍☠️ 草帽航海工作台" });
-    const tools = topbar.createDiv({ cls: "wb-tools" });
-    tools.createSpan({ text: "🔍 搜索" }).addEventListener("click", () => {
-      console.log("[workbench] search clicked");
-      // @ts-ignore
-      this.app.commands.executeCommandById("global-search:open");
-    });
-    tools.createSpan({ text: "➕ 新建" }).addEventListener("click", () => {
-      new AddWidgetModal(this.app, (widgetId) => this.addWidgetInstance(widgetId)).open();
-    });
-    tools.createSpan({ text: "⟳ 刷新" }).addEventListener("click", () => this.reload());
-    tools.createSpan({ text: "⚙ 设置" }).addEventListener("click", () => {
-      // @ts-ignore
-      this.app.setting.open();
-    });
-    // 色系切换按钮（切换 Obsidian 主题模式 class）
-    const themeBtn = tools.createSpan({ cls: "wb-theme-btn", text: "🌙/☀️" });
-    themeBtn.addEventListener("click", () => {
-      const isDark = document.body.classList.contains("theme-dark");
-      document.body.classList.toggle("theme-dark", !isDark);
-      document.body.classList.toggle("theme-light", isDark);
-    });
+    // 头图胶囊已提供 搜索/新建/刷新/设置/主题 功能，顶栏只保留标题
 
     // widget 画布：按当前页组件列表渲染（自由布局由 initDashboardLayout 接管）
     this.renderWidgetCanvas(container, "home");

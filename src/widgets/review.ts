@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, applyTitleFontSize, addTitleConfig } from "./helpers";
+import { createPanel, emptyState, applyTitleFontSize, addTitleConfig, WidgetConfigDrawer } from "./helpers";
 import { dueCards } from "../services/kcService";
 
 interface ReviewCfg {
@@ -31,8 +31,10 @@ const widget: WorkbenchWidget = {
       title: String(cfg.title || "复习"),
       icon: String(cfg.icon || "🔁"),
       accent: "#fbbf24",
-      moreLabel: `${due.length} 张`,
-      onMore: () => ctx.goto("wiki"),
+      moreLabel: "⚙️",
+      onMore: () => {
+        new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
+      },
     });
     applyTitleFontSize(bd, Number(cfg.titleFontSize) || 14);
 
