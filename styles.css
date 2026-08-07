@@ -2590,6 +2590,17 @@ body.theme-light .dash-heat-cell.on.c1 { background: #93c5fd; }
   color: #fff;
 }
 
+/* ═══════════ 通用组件（text-content 等分类通用类型） ═══════════ */
+.wb-text-content {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px;
+  transition: background .15s;
+}
+.wb-text-content:hover {
+  background: rgba(139, 92, 246, .06);
+}
+
 /* ═══════════ 英语打卡（移植自 Web 端 dashboard Checkin） ═══════════ */
 /* ── 背景音乐播放器（board 页） ── */
 .dash-music-row {

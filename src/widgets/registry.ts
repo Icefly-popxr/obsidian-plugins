@@ -16,6 +16,7 @@ import mediaGallery from "./mediaGallery";
 import directory from "./directory";
 import dailyProgress from "./dailyProgress";
 import dailyQuote from "./dailyQuote";
+import textContent from "./textContent";
 
 /** 工作台首页 widget 注册表：按此顺序渲染 */
 export const WIDGETS: WorkbenchWidget[] = [
@@ -36,6 +37,7 @@ export const WIDGETS: WorkbenchWidget[] = [
   directory,
   dailyProgress,
   dailyQuote,
+  textContent,
 ];
 
 /** 按 id 查找 widget */
@@ -58,6 +60,7 @@ export const CATEGORIES: WidgetCategory[] = [
   { id: "web", icon: "🌐", name: "网络" },
   { id: "media", icon: "🎬", name: "媒体" },
   { id: "decor", icon: "🎨", name: "装饰" },
+  { id: "universal", icon: "🧩", name: "通用" },
 ];
 
 /** 获取组件所属分类（未匹配归入 other） */
