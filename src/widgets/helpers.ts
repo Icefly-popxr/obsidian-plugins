@@ -167,6 +167,15 @@ export function createPanel(root: HTMLElement, opts: PanelOpts): HTMLElement {
   const hd = p.createDiv({ cls: "wb-hd" });
   hd.createDiv({ cls: "wb-ico", text: opts.icon });
   hd.createSpan({ cls: "wb-title", text: opts.title });
+  // 折叠/展开按钮（所有面板统一支持，状态持久化到 dashboardLayout）
+  const collapse = hd.createDiv({ cls: "wb-collapse", text: "▾" });
+  collapse.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const collapsed = p.classList.toggle("collapsed");
+    collapse.setText(collapsed ? "▸" : "▾");
+    const bd = p.querySelector<HTMLElement>(".wb-bd");
+    if (bd) bd.style.display = collapsed ? "none" : "";
+  });
   if (opts.moreLabel) {
     const more = hd.createDiv({ cls: "wb-more", text: opts.moreLabel });
     if (opts.onMore) more.addEventListener("click", opts.onMore);

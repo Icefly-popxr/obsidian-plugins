@@ -481,10 +481,20 @@ export class WorkbenchView extends ItemView {
         el.style.top = gridTop + "px";
       }
 
+      // 恢复折叠状态（dashboardLayout[id].collapsed）
+      if (el.classList.contains("wb-panel") && saved?.collapsed) {
+        el.classList.add("collapsed");
+        const bd = el.querySelector<HTMLElement>(".wb-bd");
+        if (bd) bd.style.display = "none";
+        const btn = el.querySelector<HTMLElement>(".wb-collapse");
+        if (btn) btn.setText("▸");
+      }
+
       // 绑定拖拽：对 .wb-panel 和 .wb-chart 用标题栏，对 .wb-kpi-card 用整个卡片
       const dragHandle = el.classList.contains("wb-kpi-card") ? el : (el.querySelector(".wb-hd") || el);
       dragHandle.addEventListener("mousedown", (e) => {
         if ((e.target as HTMLElement).closest(".wb-more")) return;
+        if ((e.target as HTMLElement).closest(".wb-collapse")) return;
         this.startDrag(e as MouseEvent, el);
       });
 
@@ -550,8 +560,24 @@ export class WorkbenchView extends ItemView {
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     const parentRect = el.parentElement!.getBoundingClientRect();
-    el.style.left = origLeft + dx - parentRect.left + "px";
-    el.style.top = origTop + dy - parentRect.top + "px";
+    let left = origLeft + dx - parentRect.left;
+    let top = origTop + dy - parentRect.top;
+
+    // 网格吸附：与 initDashboardLayout 的网格参数保持一致
+    const wrap = this.containerEl.querySelector(".workbench-container");
+    const canvas = wrap?.querySelector<HTMLElement>(".wb-widgets");
+    if (canvas) {
+      const total = canvas.querySelectorAll(".wb-panel, .wb-kpi-card, .wb-chart").length;
+      const cols = Math.max(1, Math.ceil(Math.sqrt(total)));
+      const gap = 12;
+      const cellW = Math.max(260, (canvas.clientWidth - (cols - 1) * gap) / cols);
+      const cellH = 180;
+      left = Math.round(left / (cellW + gap)) * (cellW + gap);
+      top = Math.round(top / (cellH + gap)) * (cellH + gap);
+    }
+
+    el.style.left = left + "px";
+    el.style.top = top + "px";
   }
 
   private applyResize(e: MouseEvent) {
@@ -588,7 +614,7 @@ export class WorkbenchView extends ItemView {
     const cards = wrap.querySelectorAll<HTMLElement>(
       ".wb-widgets .wb-panel, .wb-widgets .wb-kpi-card, .wb-widgets .wb-chart"
     );
-    const layout: Record<string, { x: number; y: number; w: number; h: number }> = {};
+    const layout: Record<string, { x: number; y: number; w: number; h: number; collapsed?: boolean }> = {};
     cards.forEach((el) => {
       const id = el.dataset.id || `card-${Math.random()}`;
       layout[id] = {
@@ -596,6 +622,7 @@ export class WorkbenchView extends ItemView {
         y: el.offsetTop,
         w: el.offsetWidth,
         h: el.offsetHeight,
+        collapsed: el.classList.contains("wb-panel") && el.classList.contains("collapsed") || undefined,
       };
     });
     this.plugin.settings.dashboardLayout = layout;
@@ -660,7 +687,14 @@ export class WorkbenchView extends ItemView {
     const topbar = container.createDiv({ cls: "wb-topbar" });
     const title = topbar.createDiv({ cls: "wb-title" });
     title.createSpan({ text: "🏴‍☠️ 草帽航海工作台" });
-    // 头图胶囊已提供 搜索/新建/刷新/设置/主题 功能，顶栏只保留标题
+    // 重置布局按钮（清空已保存的卡片位置，恢复初始网格）
+    const resetBtn = topbar.createDiv({ cls: "wb-reset-layout", text: "🗑 重置布局" });
+    resetBtn.addEventListener("click", () => {
+      this.plugin.settings.dashboardLayout = {};
+      this.plugin.saveSettings();
+      this.reload();
+    });
+    // 头图胶囊已提供 搜索/新建/刷新/设置/主题 功能，顶栏只保留标题 + 重置
 
     // widget 画布：按当前页组件列表渲染（自由布局由 initDashboardLayout 接管）
     this.renderWidgetCanvas(container, "home");

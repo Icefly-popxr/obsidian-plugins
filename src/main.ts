@@ -30,8 +30,8 @@ interface WorkbenchSettings {
   podcastStat?: Record<string, Record<string, number>>;
   /** 自定义 hero 头图（base64 data URL，空 = 默认内置图） */
   heroImageDataUrl: string;
-  /** 仪表盘布局：key = 元素 data-id，value = {x, y, w, h} */
-  dashboardLayout: Record<string, { x: number; y: number; w: number; h: number }>;
+  /** 仪表盘布局：key = 元素 data-id，value = {x, y, w, h, collapsed?} */
+  dashboardLayout: Record<string, { x: number; y: number; w: number; h: number; collapsed?: boolean }>;
   /** 首页已启用的组件实例列表（可含 #N 后缀表示同一组件的多个实例） */
   activeWidgets: string[];
   /** MaskedHeading 组件实例配置：instId -> { text, bgUrl?, color?, fontSize? } */
@@ -280,6 +280,57 @@ class WorkbenchSettingTab extends PluginSettingTab {
         cls: "wb-hero-preview",
       });
     }
+
+    // ── 数据备份（导出/导入 JSON） ──
+    containerEl.createEl("h3", { text: "💾 数据备份" });
+    containerEl.createEl("p", {
+      text: "导出全部工作台配置（组件实例/布局/打卡/英语记录等）为 JSON，换设备或迁移时导入恢复。",
+      cls: "setting-item-description",
+    });
+    new Setting(containerEl)
+      .setName("导出备份")
+      .setDesc("下载当前全部配置为 JSON 文件")
+      .addButton((btn) =>
+        btn.setButtonText("导出 JSON").setClass("mod-cta").onClick(() => {
+          const payload = JSON.stringify(this.plugin.settings, null, 2);
+          const blob = new Blob([payload], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `knowledge-workbench-backup-${new Date().toISOString().slice(0, 10)}.json`;
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          new Notice("✅ 已导出备份 JSON");
+        })
+      );
+    new Setting(containerEl)
+      .setName("导入备份")
+      .setDesc("从 JSON 文件恢复配置（会覆盖当前设置）")
+      .addButton((btn) =>
+        btn.setButtonText("导入 JSON").onClick(async () => {
+          const input = document.createElement("input");
+          input.type = "file";
+          input.accept = "application/json,.json";
+          input.onchange = async () => {
+            const file = input.files?.[0];
+            if (!file) return;
+            try {
+              const text = await file.text();
+              const parsed = JSON.parse(text);
+              if (!parsed || typeof parsed !== "object") throw new Error("无效 JSON");
+              const cur = this.plugin.settings;
+              this.plugin.settings = Object.assign({}, cur, parsed);
+              await this.plugin.saveSettings();
+              new Notice("✅ 备份已导入，重新打开工作台生效");
+              this.display();
+            } catch (e) {
+              new Notice("❌ 导入失败：请选择有效的备份 JSON 文件");
+              console.error(e);
+            }
+          };
+          input.click();
+        })
+      );
 
     // ── 组件实例管理（参考 Modular Theme Dashboard 的实例管理） ──
     containerEl.createEl("h3", { text: "🧩 组件管理" });

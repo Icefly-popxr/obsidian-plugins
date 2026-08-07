@@ -17,6 +17,8 @@ import dailyQuote from "./dailyQuote";
 import textContent from "./textContent";
 import listContent from "./listContent";
 import calendar from "./calendar";
+import iconGrid from "./iconGrid";
+import navLinks from "./navLinks";
 
 /** 工作台首页 widget 注册表：按此顺序渲染 */
 export const WIDGETS: WorkbenchWidget[] = [
@@ -38,6 +40,8 @@ export const WIDGETS: WorkbenchWidget[] = [
   textContent,
   listContent,
   calendar,
+  iconGrid,
+  navLinks,
 ];
 
 /** 按 id 查找 widget */

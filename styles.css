@@ -435,6 +435,24 @@ body.theme-light .workbench-container {
   color: var(--wb-gold);
 }
 
+/* 顶栏重置布局按钮 */
+.wb-reset-layout {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--wb-border);
+  background: var(--background-modifier-form-field);
+  color: var(--wb-sub);
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  white-space: nowrap;
+}
+.wb-reset-layout:hover {
+  background: rgba(239, 68, 68, .12);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, .35);
+}
+
 /* ── KPI 统计条（悬赏金数字） ── */
 .wb-kpi {
   display: block;
@@ -1149,6 +1167,22 @@ body.theme-light .wb-bubble {
 
 .wb-panel.wb-w .wb-hd .wb-more:hover {
   background: color-mix(in srgb, var(--w-accent) 24%, transparent);
+}
+
+/* 折叠/展开按钮 */
+.wb-collapse {
+  font-size: 10px;
+  color: var(--wb-sub);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  margin-right: 2px;
+  user-select: none;
+  transition: color .15s, background .15s;
+}
+.wb-collapse:hover {
+  color: var(--wb-gold);
+  background: rgba(251, 191, 36, .1);
 }
 
 /* 内容区 */
@@ -2660,6 +2694,54 @@ body.theme-light .dash-heat-cell.on.c1 { background: #93c5fd; }
 }
 .wb-text-content:hover {
   background: rgba(139, 92, 246, .06);
+}
+
+/* ── icon-grid 图标内容（快捷入口矩阵） ── */
+.wb-icon-grid {
+  display: grid;
+  gap: 6px;
+}
+
+/* ── nav-links 导航内容（页面导航列表） ── */
+.wb-nav-row {
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 5px 8px;
+  transition: background .15s;
+}
+.wb-nav-row:hover {
+  background: rgba(139, 92, 246, .08);
+}
+.wb-icon-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border: 1px solid var(--wb-border);
+  border-radius: 12px;
+  background: var(--wb-card);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s;
+}
+.wb-icon-cell:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .22);
+  border-color: var(--wb-gold);
+}
+.wb-icon-cell-ico {
+  line-height: 1;
+}
+.wb-icon-cell-label {
+  font-size: 10px;
+  color: var(--wb-sub);
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* ── list 清单组件 ── */
