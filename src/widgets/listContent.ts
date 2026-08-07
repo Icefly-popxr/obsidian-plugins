@@ -48,29 +48,40 @@ const widget: WorkbenchWidget = {
       title: cfg.title || "清单列表",
       icon: cfg.icon || "☑️",
       accent: DEFAULT_ACCENT,
+      moreLabel: "0/0",
     });
 
     const items = cfg.items || [];
-    if (items.length === 0) {
-      emptyState(bd, "暂无条目，点「配置」添加清单内容");
-      return;
-    }
+    // 右上角进度元素（done/total，勾选时实时更新）
+    const panel = bd.closest(".wb-panel");
+    const moreEl = panel?.querySelector<HTMLElement>(".wb-more") || null;
+    const updateProgress = () => {
+      const done = items.filter((i) => i.done).length;
+      if (moreEl) moreEl.setText(`${done}/${items.length}`);
+    };
+
+    // 保存条目到 widgetConfigs
+    const saveItems = () => {
+      const map = ctx.plugin.settings.widgetConfigs || {};
+      map[ctx.instanceId] = { ...(map[ctx.instanceId] || {}), items: [...items] };
+      ctx.plugin.settings.widgetConfigs = map;
+      ctx.plugin.saveSettings();
+    };
 
     const renderList = () => {
-      bd.querySelector(".wb-list-items")?.empty();
-      const listEl = bd.querySelector<HTMLElement>(".wb-list-items");
-      if (!listEl) return;
+      listEl.empty();
+      updateProgress();
+      if (items.length === 0) {
+        emptyState(listEl, "暂无条目，在下方添加第一条吧 ✍️");
+        return;
+      }
       items.forEach((it, i) => {
         const row = listEl.createDiv({ cls: "wb-task" + (it.done ? " done" : "") });
         if (cfg.showCheckbox) {
           const box = row.createDiv({ cls: "wb-box" + (it.done ? " on" : "") });
           box.addEventListener("click", () => {
             items[i].done = !items[i].done;
-            // 保存勾选状态（实时持久化）
-            const map = ctx.plugin.settings.widgetConfigs || {};
-            map[ctx.instanceId] = { ...(map[ctx.instanceId] || {}), items: [...items] };
-            ctx.plugin.settings.widgetConfigs = map;
-            ctx.plugin.saveSettings();
+            saveItems();
             renderList();
           });
         }
@@ -81,6 +92,23 @@ const widget: WorkbenchWidget = {
 
     const listEl = bd.createDiv({ cls: "wb-list-items" });
     renderList();
+
+    // 组件内直接添加条目
+    const inputRow = bd.createDiv({ cls: "dash-form" });
+    const input = inputRow.createEl("input", { attr: { placeholder: "添加条目…" } });
+    const addBtn = inputRow.createEl("button", { text: "➕" });
+    const doAdd = () => {
+      const text = input.value.trim();
+      if (!text) return;
+      items.push({ text, done: false });
+      saveItems();
+      input.value = "";
+      renderList();
+    };
+    addBtn.addEventListener("click", doAdd);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") doAdd();
+    });
 
     void listEl;
   },
