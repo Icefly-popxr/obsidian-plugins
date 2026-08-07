@@ -1,6 +1,6 @@
-import { Setting, TextComponent } from "obsidian";
+import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState } from "./helpers";
+import { createPanel, emptyState, addFontSizeControls } from "./helpers";
 
 /**
  * 通用文字内容组件（分类通用组件第一类，验证"配置驱动"模式）
@@ -111,15 +111,21 @@ const widget: WorkbenchWidget = {
       save();
     };
 
-    new Setting(el)
+    // 标题：输入框 + 同一行字号控件（标题文字与图标 emoji 跟随）
+    const titleSetting = new Setting(el)
       .setName("标题")
-      .setDesc("卡片标题栏文字（留空显示「文字内容」）")
-      .addText((t) =>
-        t
-          .setPlaceholder("例如：本周目标")
-          .setValue(String(inst.title || ""))
-          .onChange((v) => update({ title: v.trim() }))
-      );
+      .setDesc("卡片标题栏文字（留空显示「文字内容」）");
+    titleSetting.addText((t) =>
+      t
+        .setPlaceholder("例如：本周目标")
+        .setValue(String(inst.title || ""))
+        .onChange((v) => update({ title: v.trim() }))
+    );
+    addFontSizeControls(titleSetting, {
+      value:
+        typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14,
+      onChange: (v) => update({ titleFontSize: v }),
+    });
 
     new Setting(el)
       .setName("图标")
@@ -131,84 +137,22 @@ const widget: WorkbenchWidget = {
           .onChange((v) => update({ icon: v.trim() }))
       );
 
-    new Setting(el)
+    // 正文：输入框 + 同一行字号控件
+    const bodySetting = new Setting(el)
       .setName("正文")
-      .setDesc("支持多行文字，直接输入即可（空内容时卡片显示占位提示）")
-      .addTextArea((ta) => {
-        ta.setPlaceholder("在这里输入你想展示的文字…");
-        ta.setValue(String(inst.text || ""));
-        ta.inputEl.rows = 5;
-        ta.inputEl.style.width = "100%";
-        ta.inputEl.style.fontSize = "13px";
-        ta.onChange((v) => update({ text: v }));
-      });
-
-    // 字号：− / 数值输入 / ＋ 按钮（范围 10-32）
-    let size = typeof inst.fontSize === "number" && inst.fontSize > 0 ? inst.fontSize : 14;
-    let sizeText: TextComponent;
-    const sizeSetting = new Setting(el).setName("字号").setDesc("正文字号（px）");
-    sizeSetting.addText((t) => {
-      sizeText = t;
-      t.setValue(String(size));
-      t.inputEl.style.width = "48px";
-      t.inputEl.style.textAlign = "center";
-      t.onChange((v) => {
-        const n = parseInt(v, 10);
-        if (!isNaN(n) && n >= 10 && n <= 32) {
-          size = n;
-          update({ fontSize: n });
-        }
-      });
+      .setDesc("支持多行文字，直接输入即可（空内容时卡片显示占位提示）");
+    bodySetting.addTextArea((ta) => {
+      ta.setPlaceholder("在这里输入你想展示的文字…");
+      ta.setValue(String(inst.text || ""));
+      ta.inputEl.rows = 5;
+      ta.inputEl.style.width = "100%";
+      ta.inputEl.style.fontSize = "13px";
+      ta.onChange((v) => update({ text: v }));
     });
-    sizeSetting.addButton((b) =>
-      b.setButtonText("−").onClick(() => {
-        size = Math.max(10, size - 1);
-        sizeText.setValue(String(size));
-        update({ fontSize: size });
-      })
-    );
-    sizeSetting.addButton((b) =>
-      b.setButtonText("＋").onClick(() => {
-        size = Math.min(32, size + 1);
-        sizeText.setValue(String(size));
-        update({ fontSize: size });
-      })
-    );
-
-    // 标题字号：− / 数值输入 / ＋ 按钮（范围 10-32，标题与图标 emoji 跟随）
-    let titleSize =
-      typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14;
-    let titleSizeText: TextComponent;
-    const titleSizeSetting = new Setting(el)
-      .setName("标题字号")
-      .setDesc("标题栏文字与图标 emoji 的大小（px）");
-    titleSizeSetting.addText((t) => {
-      titleSizeText = t;
-      t.setValue(String(titleSize));
-      t.inputEl.style.width = "48px";
-      t.inputEl.style.textAlign = "center";
-      t.onChange((v) => {
-        const n = parseInt(v, 10);
-        if (!isNaN(n) && n >= 10 && n <= 32) {
-          titleSize = n;
-          update({ titleFontSize: n });
-        }
-      });
+    addFontSizeControls(bodySetting, {
+      value: typeof inst.fontSize === "number" && inst.fontSize > 0 ? inst.fontSize : 14,
+      onChange: (v) => update({ fontSize: v }),
     });
-    titleSizeSetting.addButton((b) =>
-      b.setButtonText("−").onClick(() => {
-        titleSize = Math.max(10, titleSize - 1);
-        titleSizeText.setValue(String(titleSize));
-        update({ titleFontSize: titleSize });
-      })
-    );
-    titleSizeSetting.addButton((b) =>
-      b.setButtonText("＋").onClick(() => {
-        titleSize = Math.min(32, titleSize + 1);
-        titleSizeText.setValue(String(titleSize));
-        update({ titleFontSize: titleSize });
-      })
-    );
 
     new Setting(el)
       .setName("对齐")

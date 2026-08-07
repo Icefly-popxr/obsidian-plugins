@@ -4,6 +4,8 @@
  * 布局系统（initDashboardLayout）按这些 class 自动接管拖拽/缩放/位置持久化。
  */
 
+import { Setting, TextComponent } from "obsidian";
+
 export interface PanelOpts {
   id: string;
   title: string;
@@ -36,4 +38,50 @@ export function createPanel(root: HTMLElement, opts: PanelOpts): HTMLElement {
 /** 空状态 */
 export function emptyState(bd: HTMLElement, text: string): HTMLElement {
   return bd.createDiv({ cls: "wb-empty", text });
+}
+
+export interface FontSizeControlsOpts {
+  value: number;
+  min?: number;
+  max?: number;
+  onChange: (v: number) => void;
+}
+
+/**
+ * 统一字号控件：在 Setting 内追加 − / 数值输入 / ＋ 三个控件。
+ * 所有通用组件（文字/清单/日历等）的标题与正文字号共用同一套 UI。
+ */
+export function addFontSizeControls(setting: Setting, opts: FontSizeControlsOpts): void {
+  const min = opts.min ?? 10;
+  const max = opts.max ?? 32;
+  let size = opts.value;
+  let sizeText: TextComponent;
+
+  setting.addText((t) => {
+    sizeText = t;
+    t.setValue(String(size));
+    t.inputEl.style.width = "48px";
+    t.inputEl.style.textAlign = "center";
+    t.onChange((v) => {
+      const n = parseInt(v, 10);
+      if (!isNaN(n) && n >= min && n <= max) {
+        size = n;
+        opts.onChange(n);
+      }
+    });
+  });
+  setting.addButton((b) =>
+    b.setButtonText("−").onClick(() => {
+      size = Math.max(min, size - 1);
+      sizeText.setValue(String(size));
+      opts.onChange(size);
+    })
+  );
+  setting.addButton((b) =>
+    b.setButtonText("＋").onClick(() => {
+      size = Math.min(max, size + 1);
+      sizeText.setValue(String(size));
+      opts.onChange(size);
+    })
+  );
 }

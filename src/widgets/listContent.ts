@@ -1,10 +1,11 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState } from "./helpers";
+import { createPanel, emptyState, addFontSizeControls } from "./helpers";
 
 /**
  * 通用清单组件（分类通用组件第二类）
  *  - 配置：标题 / 图标 / 清单条目（可勾选持久化）/ 是否显示勾选框
+ *  - 标题字号在「标题」行内调整，条目字号在「清单条目」编辑区调整
  *  - 条目存 settings.widgetConfigs[instId]，改配置即改内容，无需改代码
  *  - 支持多实例（#N 后缀），每实例独立配置
  */
@@ -20,6 +21,10 @@ interface ListContentCfg {
   icon?: string;
   items?: ListItem[];
   showCheckbox?: boolean;
+  /** 标题栏字号（含图标 emoji 跟随） */
+  titleFontSize?: number;
+  /** 条目文字字号 */
+  itemFontSize?: number;
 }
 
 const DEFAULT_ACCENT = "#34d399";
@@ -31,6 +36,10 @@ function readCfg(ctx: WidgetCtx): ListContentCfg {
     icon: String(cfg.icon || "☑️"),
     items: Array.isArray(cfg.items) ? cfg.items : [],
     showCheckbox: cfg.showCheckbox !== false,
+    titleFontSize:
+      typeof cfg.titleFontSize === "number" && cfg.titleFontSize > 0 ? cfg.titleFontSize : 14,
+    itemFontSize:
+      typeof cfg.itemFontSize === "number" && cfg.itemFontSize > 0 ? cfg.itemFontSize : 13,
   };
 }
 
@@ -51,9 +60,23 @@ const widget: WorkbenchWidget = {
       moreLabel: "0/0",
     });
 
+    // 标题栏字号：应用到标题文字 + 图标 emoji（跟随自适应）
+    const titleFontSize = cfg.titleFontSize || 14;
+    const itemFontSize = cfg.itemFontSize || 13;
+    const panel = bd.closest(".wb-panel");
+    if (panel) {
+      const ico = panel.querySelector<HTMLElement>(".wb-ico");
+      const titleEl = panel.querySelector<HTMLElement>(".wb-title");
+      if (ico) {
+        ico.style.fontSize = `${titleFontSize}px`;
+        ico.style.width = `${titleFontSize + 8}px`;
+        ico.style.height = `${titleFontSize + 8}px`;
+      }
+      if (titleEl) titleEl.style.fontSize = `${titleFontSize}px`;
+    }
+
     const items = cfg.items || [];
     // 右上角进度元素（done/total，勾选时实时更新）
-    const panel = bd.closest(".wb-panel");
     const moreEl = panel?.querySelector<HTMLElement>(".wb-more") || null;
     const updateProgress = () => {
       const done = items.filter((i) => i.done).length;
@@ -85,8 +108,12 @@ const widget: WorkbenchWidget = {
             renderList();
           });
         }
-        row.createSpan({ cls: "wb-name", text: it.text });
-        if (it.tag) row.createSpan({ cls: "wb-due", text: it.tag });
+        const nameEl = row.createSpan({ cls: "wb-name", text: it.text });
+        nameEl.style.fontSize = `${itemFontSize}px`;
+        if (it.tag) {
+          const tagEl = row.createSpan({ cls: "wb-due", text: it.tag });
+          tagEl.style.fontSize = `${Math.max(10, itemFontSize - 2)}px`;
+        }
       });
     };
 
@@ -124,15 +151,21 @@ const widget: WorkbenchWidget = {
       save();
     };
 
-    new Setting(el)
+    // 标题：输入框 + 同一行字号控件（标题文字与图标 emoji 跟随）
+    const titleSetting = new Setting(el)
       .setName("标题")
-      .setDesc("卡片标题栏文字（留空显示「清单列表」）")
-      .addText((t) =>
-        t
-          .setPlaceholder("例如：本周清单")
-          .setValue(String(inst.title || ""))
-          .onChange((v) => update({ title: v.trim() }))
-      );
+      .setDesc("卡片标题栏文字（留空显示「清单列表」）");
+    titleSetting.addText((t) =>
+      t
+        .setPlaceholder("例如：本周清单")
+        .setValue(String(inst.title || ""))
+        .onChange((v) => update({ title: v.trim() }))
+    );
+    addFontSizeControls(titleSetting, {
+      value:
+        typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14,
+      onChange: (v) => update({ titleFontSize: v }),
+    });
 
     new Setting(el)
       .setName("图标")
@@ -157,6 +190,16 @@ const widget: WorkbenchWidget = {
     el.createEl("h4", {
       text: "📋 清单条目",
       attr: { style: "margin:14px 0 6px;font-size:13px;font-weight:700;" },
+    });
+
+    // 条目字号：放在条目编辑区上方
+    const itemSizeSetting = new Setting(el)
+      .setName("条目字号")
+      .setDesc("清单条目文字大小（px）");
+    addFontSizeControls(itemSizeSetting, {
+      value:
+        typeof inst.itemFontSize === "number" && inst.itemFontSize > 0 ? inst.itemFontSize : 13,
+      onChange: (v) => update({ itemFontSize: v }),
     });
 
     const items = Array.isArray(inst.items) ? inst.items.map((x) => ({ ...x })) : [];

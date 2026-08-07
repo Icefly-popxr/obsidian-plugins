@@ -1,10 +1,11 @@
 import { App, Modal, Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel } from "./helpers";
+import { createPanel, addFontSizeControls } from "./helpers";
 
 /**
  * 通用日历组件（分类通用组件第三类）
  *  - 配置：标题 / 图标 / 周起始（周日或周一）
+ *  - 标题字号在「标题」行内调整，日期字号独立配置
  *  - 日期标记：点击日历上的日期弹窗输入标记文字（emoji/备注），存 widgetConfigs[instId].marks
  *  - 今天高亮描边，有标记的日期显示角标
  *  - 支持多实例（#N 后缀），每实例独立标记
@@ -14,6 +15,10 @@ interface CalendarCfg {
   title?: string;
   icon?: string;
   weekStart?: "sunday" | "monday";
+  /** 标题栏字号（含图标 emoji 跟随） */
+  titleFontSize?: number;
+  /** 日期格文字字号 */
+  cellFontSize?: number;
   /** YYYY-MM-DD -> 标记文字 */
   marks?: Record<string, string>;
 }
@@ -31,6 +36,10 @@ function readCfg(ctx: WidgetCtx): CalendarCfg {
     icon: String(cfg.icon || "📅"),
     weekStart: cfg.weekStart || "sunday",
     marks: cfg.marks || {},
+    titleFontSize:
+      typeof cfg.titleFontSize === "number" && cfg.titleFontSize > 0 ? cfg.titleFontSize : 14,
+    cellFontSize:
+      typeof cfg.cellFontSize === "number" && cfg.cellFontSize > 0 ? cfg.cellFontSize : 12,
   };
 }
 
@@ -124,6 +133,22 @@ const widget: WorkbenchWidget = {
     let viewYear = today.getFullYear();
     let viewMonth = today.getMonth(); // 0-11
 
+    // 标题栏字号：应用到标题文字 + 图标 emoji（跟随自适应）
+    const titleFontSize = cfg.titleFontSize || 14;
+    const panel = bd.closest(".wb-panel");
+    if (panel) {
+      const ico = panel.querySelector<HTMLElement>(".wb-ico");
+      const titleEl = panel.querySelector<HTMLElement>(".wb-title");
+      if (ico) {
+        ico.style.fontSize = `${titleFontSize}px`;
+        ico.style.width = `${titleFontSize + 8}px`;
+        ico.style.height = `${titleFontSize + 8}px`;
+      }
+      if (titleEl) titleEl.style.fontSize = `${titleFontSize}px`;
+    }
+    // 日期格文字字号
+    const cellFontSize = cfg.cellFontSize || 12;
+
     // 保存 marks
     const saveMarks = (next: Record<string, string>) => {
       const map = ctx.plugin.settings.widgetConfigs || {};
@@ -172,6 +197,7 @@ const widget: WorkbenchWidget = {
           text: String(d),
           attr: { title: marks[key] ? marks[key] : "点击添加标记" },
         });
+        cell.style.fontSize = `${cellFontSize}px`;
         if (marks[key]) {
           const badge = cell.createDiv({ cls: "wb-cal-badge", text: marks[key].slice(0, 3) });
           void badge;
@@ -228,15 +254,21 @@ const widget: WorkbenchWidget = {
       save();
     };
 
-    new Setting(el)
+    // 标题：输入框 + 同一行字号控件（标题文字与图标 emoji 跟随）
+    const titleSetting = new Setting(el)
       .setName("标题")
-      .setDesc("卡片标题栏文字（留空显示「日历」）")
-      .addText((t) =>
-        t
-          .setPlaceholder("例如：重要日期")
-          .setValue(String(inst.title || ""))
-          .onChange((v) => update({ title: v.trim() }))
-      );
+      .setDesc("卡片标题栏文字（留空显示「日历」）");
+    titleSetting.addText((t) =>
+      t
+        .setPlaceholder("例如：重要日期")
+        .setValue(String(inst.title || ""))
+        .onChange((v) => update({ title: v.trim() }))
+    );
+    addFontSizeControls(titleSetting, {
+      value:
+        typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14,
+      onChange: (v) => update({ titleFontSize: v }),
+    });
 
     new Setting(el)
       .setName("图标")
@@ -257,6 +289,16 @@ const widget: WorkbenchWidget = {
           .setValue(inst.weekStart || "sunday")
           .onChange((v) => update({ weekStart: v as CalendarCfg["weekStart"] }))
       );
+
+    // 日期字号
+    const cellSizeSetting = new Setting(el)
+      .setName("日期字号")
+      .setDesc("日历日期格文字大小（px）");
+    addFontSizeControls(cellSizeSetting, {
+      value:
+        typeof inst.cellFontSize === "number" && inst.cellFontSize > 0 ? inst.cellFontSize : 12,
+      onChange: (v) => update({ cellFontSize: v }),
+    });
 
     el.createEl("p", {
       text: "💡 点击日历上的日期即可添加/清除标记（如 🎂 生日、📝 交稿日）。标记跟随本实例独立保存。",
