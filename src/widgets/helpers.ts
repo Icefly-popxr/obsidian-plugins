@@ -72,6 +72,8 @@ export class WidgetConfigDrawer extends Modal {
 
     // 通用外观：主色（所有组件统一入口，与设置面板一致）
     this.renderAccentColor(contentEl, saveCb);
+    // 通用外观：卡片风格（可切换不同卡片样式）
+    this.renderCardStyle(contentEl, saveCb);
 
     if (typeof this.widget.renderSettings === "function") {
       try {
@@ -151,6 +153,47 @@ export class WidgetConfigDrawer extends Modal {
     saveCb();
   }
 
+  /** 卡片风格配置（所有组件统一入口，可选不同卡片样式） */
+  private renderCardStyle(target: HTMLElement, saveCb: () => void) {
+    const STYLES: { id: string; label: string }[] = [
+      { id: "", label: "默认卡片" },
+      { id: "flat", label: "简约扁平" },
+      { id: "glass", label: "玻璃拟态" },
+      { id: "shadow", label: "立体阴影" },
+      { id: "bare", label: "无边框融入" },
+    ];
+    const cfg = this.plugin.settings.widgetConfigs || {};
+    const inst = cfg[this.instanceId] || {};
+    const current = String(inst.cardStyle || "");
+
+    target.createEl("h4", {
+      text: "🃏 卡片风格",
+      attr: { style: "margin:10px 0 4px;font-size:13px;font-weight:700;" },
+    });
+    const dd = target.createEl("select");
+    dd.style.width = "100%";
+    dd.style.padding = "4px 8px";
+    dd.style.fontSize = "12px";
+    dd.style.borderRadius = "6px";
+    dd.style.border = "1px solid var(--background-modifier-border)";
+    STYLES.forEach((s) => {
+      const opt = dd.createEl("option", { text: s.label });
+      opt.value = s.id;
+    });
+    dd.value = current;
+    dd.addEventListener("change", () => {
+      cfg[this.instanceId] = { ...inst, cardStyle: dd.value };
+      this.plugin.settings.widgetConfigs = cfg;
+      this.plugin.saveSettings();
+      saveCb();
+    });
+    const desc = target.createEl("p", {
+      text: "切换卡片外观：默认 / 简约扁平 / 玻璃拟态 / 立体阴影 / 无边框融入",
+      attr: { style: "font-size:11px;color:var(--wb-sub);margin:4px 0 8px;" },
+    });
+    void desc;
+  }
+
   onClose() {
     const { contentEl } = this;
     contentEl.empty();
@@ -174,6 +217,8 @@ export interface PanelOpts {
   accent: string;
   moreLabel?: string;
   onMore?: () => void;
+  /** 卡片风格：flat / glass / shadow / bare（空 = 默认），应用 .wb-style-* 类 */
+  cardStyle?: string;
 }
 
 /** 创建面板外壳，返回内容区（.wb-bd），widget 往内容区填充 DOM */
@@ -181,6 +226,8 @@ export function createPanel(root: HTMLElement, opts: PanelOpts): HTMLElement {
   const p = root.createDiv({ cls: `wb-panel wb-w ${opts.id}` });
   p.dataset.id = opts.id;
   p.style.setProperty("--w-accent", opts.accent);
+  // 卡片风格类（默认不额外加类）
+  if (opts.cardStyle) p.addClass(`wb-style-${opts.cardStyle}`);
 
   const hd = p.createDiv({ cls: "wb-hd" });
   hd.createDiv({ cls: "wb-ico", text: opts.icon });

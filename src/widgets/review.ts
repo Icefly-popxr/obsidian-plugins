@@ -32,6 +32,7 @@ const widget: WorkbenchWidget = {
       icon: String(cfg.icon || "🔁"),
       accent: "#fbbf24",
       moreLabel: "⚙️",
+      cardStyle: String((ctx.widgetConfig || {}).cardStyle || ""),
       onMore: () => {
         new WidgetConfigDrawer(ctx.app, ctx.plugin, ctx.instanceId, widget).open();
       },
