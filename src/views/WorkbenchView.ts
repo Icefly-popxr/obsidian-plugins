@@ -37,6 +37,8 @@ import { MoltenBackground } from "../backgrounds/MoltenBackground";
 import { crewBackdropDataUri } from "../backgrounds/crewBackdrop";
 import { WIDGETS, getWidget, CATEGORIES, groupWidgetsByCategory } from "../widgets/registry";
 import { loadSharedData, saveSharedData, SharedData, defaultSharedData } from "../services/sharedStore";
+import { DashboardLayoutManager } from "./dashboardLayout";
+import { buildEffects } from "./effects";
 import type { WidgetCtx, LoadedData } from "../widgets/types";
 
 export const WORKBENCH_VIEW_TYPE = "knowledge-workbench-view";
@@ -64,10 +66,16 @@ export class WorkbenchView extends ItemView {
   private bgLayer: HTMLElement | null = null;
   /** 共享数据（vault 00_工具/工作台数据.json，与 Web 端共用一份） */
   private sharedData: SharedData = defaultSharedData();
+  /** 自由布局管理器（拖拽/缩放/参考线，E1 拆分独立模块） */
+  private layoutMgr: DashboardLayoutManager;
 
   constructor(leaf: WorkspaceLeaf, plugin: KnowledgeWorkbenchPlugin) {
     super(leaf);
     this.plugin = plugin;
+    // 布局管理器：文档级事件交给 registerDomEvent（视图关闭自动注销）
+    this.layoutMgr = new DashboardLayoutManager(this.plugin, (type, cb) =>
+      this.registerDomEvent(document, type as keyof DocumentEventMap, cb)
+    );
   }
 
   getViewType(): string {
@@ -115,6 +123,9 @@ export class WorkbenchView extends ItemView {
 
   /** 全量加载数据并渲染 */
   async reload() {
+    // 首次加载（尚无数据）时先显示骨架屏，数据就绪后 render() 替换
+    if (!this.data) this.renderSkeleton();
+
     const base = this.plugin.settings.knowledgeBasePath;
     const [stats, kcCards, projects, tasks, recent] = await Promise.all([
       computeStats(this.app, base),
@@ -137,6 +148,35 @@ export class WorkbenchView extends ItemView {
     this.render();
   }
 
+  /** 骨架屏：加载中的占位布局（hero 条 + KPI 块 + 列表行） */
+  private renderSkeleton() {
+    this.containerEl.empty();
+    const wrap = this.containerEl.createDiv({ cls: "workbench-container" });
+
+    // 侧边栏占位
+    const sb = wrap.createDiv({ cls: "wb-sidebar wb-sk-sidebar" });
+    for (let i = 0; i < 6; i++) {
+      sb.createDiv({ cls: "wb-sk-row" });
+    }
+
+    const main = wrap.createDiv({ cls: "wb-main" });
+    // hero 占位
+    const hero = main.createDiv({ cls: "wb-sk-hero" });
+    hero.createDiv({ cls: "wb-sk-line w70" });
+    hero.createDiv({ cls: "wb-sk-line w40" });
+    // KPI 块
+    const kpi = main.createDiv({ cls: "wb-sk-grid" });
+    for (let i = 0; i < 6; i++) {
+      kpi.createDiv({ cls: "wb-sk-card" });
+    }
+    // 列表行
+    const list = main.createDiv({ cls: "wb-sk-list" });
+    for (let i = 0; i < 5; i++) {
+      const row = list.createDiv({ cls: "wb-sk-row" });
+      void row;
+    }
+  }
+
   /** 主渲染入口：按当前页绘制 */
   render() {
     this.containerEl.empty();
@@ -156,7 +196,7 @@ export class WorkbenchView extends ItemView {
     this.buildHero(main);
 
     if (this.plugin.settings.showEffects) {
-      this.buildEffects(wrap);
+      buildEffects(wrap);
     }
 
     if (!this.data) {
@@ -173,7 +213,7 @@ export class WorkbenchView extends ItemView {
         el.classList.add("wb-glow");
         this.attachGlow(el);
       });
-      this.initDashboardLayout(main);
+      this.layoutMgr.init(main);
       this.attachRevealObserver(main);
     } else {
       this.renderPage(main);
@@ -186,7 +226,7 @@ export class WorkbenchView extends ItemView {
           el.classList.add("wb-glow");
           this.attachGlow(el);
         });
-        this.initDashboardLayout(main);
+        this.layoutMgr.init(main);
         this.attachRevealObserver(main);
       }
     }
@@ -429,337 +469,6 @@ export class WorkbenchView extends ItemView {
         el.classList.add("is-visible");
       });
     }, 1000);
-  }
-
-  /** 自由布局：初始化卡片位置 + 绑定拖拽/缩放（仅处理画布内卡片，排除子页固定面板） */
-  private initDashboardLayout(container: HTMLElement) {
-    const layout = this.plugin.settings.dashboardLayout || {};
-    const cards = container.querySelectorAll<HTMLElement>(
-      ".wb-widgets .wb-panel, .wb-widgets .wb-kpi-card, .wb-widgets .wb-chart"
-    );
-    const base = container.getBoundingClientRect();
-    
-    // 初始网格布局（如果没有保存的位置）
-    const total = cards.length;
-    const cols = Math.max(1, Math.ceil(Math.sqrt(total)));
-    const gap = 12;
-    // cellW 需容纳最宽卡片（面板 260px），避免初始网格互相重叠
-    const cellW = Math.max(260, (container.clientWidth - (cols - 1) * gap) / cols);
-    const cellH = 180;
-
-    cards.forEach((el, i) => {
-      // 确保每个卡片有 data-id
-      if (!el.dataset.id) {
-        el.dataset.id = el.classList.contains("wb-kpi-card") ? `stat-${i}` : `card-${i}`;
-      }
-      const id = el.dataset.id;
-      const saved = layout[id];
-      
-      // 计算相对于 base 的初始网格位置
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const gridLeft = col * (cellW + gap);
-      const gridTop = row * (cellH + gap);
-      
-      // 应用保存的位置，或初始网格位置
-      if (saved && saved.x != null && saved.y != null) {
-        el.style.left = saved.x + "px";
-        el.style.top = saved.y + "px";
-        // 尺寸由 CSS 固定/内容自适应的卡片：只恢复位置，不恢复保存的固定宽高
-        // （masked-heading 贴合文字；web-preview/media-gallery/directory 固定高度内部滚动）
-        const sizeByCss =
-          el.classList.contains("masked-heading") ||
-          el.classList.contains("web-preview") ||
-          el.classList.contains("media-gallery") ||
-          el.classList.contains("directory");
-        if (!sizeByCss) {
-          if (saved.w) el.style.width = saved.w + "px";
-          if (saved.h) el.style.height = saved.h + "px";
-        }
-      } else {
-        el.style.left = gridLeft + "px";
-        el.style.top = gridTop + "px";
-      }
-
-      // 恢复折叠状态（dashboardLayout[id].collapsed）
-      if (el.classList.contains("wb-panel") && saved?.collapsed) {
-        el.classList.add("collapsed");
-        const bd = el.querySelector<HTMLElement>(".wb-bd");
-        if (bd) bd.style.display = "none";
-        const btn = el.querySelector<HTMLElement>(".wb-collapse");
-        if (btn) btn.setText("▸");
-      }
-
-      // 绑定拖拽：对 .wb-panel 和 .wb-chart 用标题栏，对 .wb-kpi-card 用整个卡片
-      const dragHandle = el.classList.contains("wb-kpi-card") ? el : (el.querySelector(".wb-hd") || el);
-      dragHandle.addEventListener("mousedown", (e) => {
-        if ((e.target as HTMLElement).closest(".wb-more")) return;
-        if ((e.target as HTMLElement).closest(".wb-collapse")) return;
-        this.startDrag(e as MouseEvent, el);
-      });
-
-      // 绑定缩放
-      const resizeHandle = el.querySelector(".wb-resize-handle");
-      if (resizeHandle) {
-        resizeHandle.addEventListener("mousedown", (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          const ev = e as MouseEvent;
-          this.resizeState = {
-            el,
-            startX: ev.clientX,
-            startY: ev.clientY,
-            origW: el.offsetWidth,
-            origH: el.offsetHeight,
-          };
-          el.classList.add("resizing");
-        });
-      }
-    });
-
-    // 全局事件（只绑定一次；registerDomEvent 在视图关闭时自动注销，避免监听泄漏）
-    if (!this._dragBound) {
-      this._dragBound = true;
-      this.registerDomEvent(document, "mouseup", () => {
-        this.endDrag();
-        this.endResize();
-      });
-      this.registerDomEvent(document, "mousemove", (e) => {
-        this.onDrag(e as MouseEvent);
-        this.applyResize(e as MouseEvent);
-      });
-    }
-
-    // 撑开画布高度：卡片为绝对定位，画布自身高度为 0，需按网格总行数补足，
-    // 否则底部导航会被卡片覆盖、页面高度塌陷
-    const canvas = container.querySelector<HTMLElement>(".wb-widgets");
-    if (canvas) {
-      const rows = Math.max(1, Math.ceil(total / cols));
-      canvas.style.height = rows * (cellH + gap) + gap + "px";
-    }
-  }
-  private _dragBound = false;
-  private dragState: { el: HTMLElement; startX: number; startY: number; origLeft: number; origTop: number } | null = null;
-  private resizeState: { el: HTMLElement; startX: number; startY: number; origW: number; origH: number } | null = null;
-  /** 拖拽对齐参考线层（画布内绝对定位） */
-  private dragGuides: HTMLElement | null = null;
-
-  private startDrag(e: MouseEvent, el: HTMLElement) {
-    const rect = el.getBoundingClientRect();
-    this.dragState = {
-      el,
-      startX: e.clientX,
-      startY: e.clientY,
-      origLeft: rect.left,
-      origTop: rect.top,
-    };
-    el.classList.add("dragging");
-    this.ensureDragGuides();
-  }
-
-  /** 创建参考线层（挂在 .wb-widgets 画布内，覆盖整个画布） */
-  private ensureDragGuides() {
-    if (this.dragGuides && this.dragGuides.isConnected) return;
-    const canvas = this.containerEl.querySelector<HTMLElement>(".wb-widgets");
-    if (!canvas) return;
-    this.dragGuides = canvas.createDiv({ cls: "wb-drag-guides" });
-  }
-
-  private clearDragGuides() {
-    if (this.dragGuides) this.dragGuides.empty();
-  }
-
-  /** 计算对齐参考线：当前卡片边缘/中线 对齐 画布内其他卡片（阈值 6px） */
-  private computeAlignGuides(
-    el: HTMLElement,
-    left: number,
-    top: number
-  ): { x: number | null; y: number | null } {
-    const canvas = this.containerEl.querySelector<HTMLElement>(".wb-widgets");
-    if (!canvas) return { x: null, y: null };
-    const w = el.offsetWidth;
-    const h = el.offsetHeight;
-    // 当前卡片候选线（左/中/右、上/中/下）
-    const myX = [left, left + w / 2, left + w];
-    const myY = [top, top + h / 2, top + h];
-    // 收集其他卡片候选线
-    const othersX: number[] = [];
-    const othersY: number[] = [];
-    canvas.querySelectorAll<HTMLElement>(".wb-panel, .wb-kpi-card, .wb-chart").forEach((c) => {
-      if (c === el || c.contains(el)) return;
-      const ow = c.offsetWidth;
-      const oh = c.offsetHeight;
-      const cl = c.offsetLeft;
-      const ct = c.offsetTop;
-      othersX.push(cl, cl + ow / 2, cl + ow);
-      othersY.push(ct, ct + oh / 2, ct + oh);
-    });
-    if (othersX.length === 0) return { x: null, y: null };
-
-    const TH = 6;
-    let bestX: number | null = null;
-    let bestXDist = Infinity;
-    for (const mx of myX) {
-      for (const ox of othersX) {
-        const d = Math.abs(mx - ox);
-        if (d <= TH && d < bestXDist) {
-          bestXDist = d;
-          bestX = ox;
-        }
-      }
-    }
-    let bestY: number | null = null;
-    let bestYDist = Infinity;
-    for (const my of myY) {
-      for (const oy of othersY) {
-        const d = Math.abs(my - oy);
-        if (d <= TH && d < bestYDist) {
-          bestYDist = d;
-          bestY = oy;
-        }
-      }
-    }
-    return { x: bestX, y: bestY };
-  }
-
-  private onDrag(e: MouseEvent) {
-    if (!this.dragState) return;
-    const { el, startX, startY, origLeft, origTop } = this.dragState;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    const parentRect = el.parentElement!.getBoundingClientRect();
-    let left = origLeft + dx - parentRect.left;
-    let top = origTop + dy - parentRect.top;
-
-    // 对齐参考线：命中则吸附并显示参考线
-    const guides = this.computeAlignGuides(el, left, top);
-    if (guides.x !== null) left = guides.x;
-    if (guides.y !== null) top = guides.y;
-
-    el.style.left = left + "px";
-    el.style.top = top + "px";
-
-    this.renderDragGuides(el, left, top, guides);
-  }
-
-  /** 渲染参考线：命中位置画横/竖参考线，未命中清空 */
-  private renderDragGuides(
-    el: HTMLElement,
-    left: number,
-    top: number,
-    guides: { x: number | null; y: number | null }
-  ) {
-    const layer = this.dragGuides;
-    if (!layer) return;
-    layer.empty();
-    if (guides.x !== null) {
-      const v = layer.createDiv({ cls: "wb-guide-v" });
-      v.style.left = `${guides.x}px`;
-    }
-    if (guides.y !== null) {
-      const h = layer.createDiv({ cls: "wb-guide-h" });
-      h.style.top = `${guides.y}px`;
-    }
-    void el;
-  }
-
-  private applyResize(e: MouseEvent) {
-    if (!this.resizeState) return;
-    const { el, startX, startY, origW, origH } = this.resizeState;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-    const newW = Math.max(180, origW + dx);
-    const newH = Math.max(120, origH + dy);
-    el.style.width = newW + "px";
-    el.style.height = newH + "px";
-  }
-
-  private endDrag() {
-    if (!this.dragState) return;
-    const { el } = this.dragState;
-    el.classList.remove("dragging");
-    this.clearDragGuides();
-    this.saveDashboardLayout();
-    this.dragState = null;
-  }
-
-  private endResize() {
-    if (!this.resizeState) return;
-    const { el } = this.resizeState;
-    el.classList.remove("resizing");
-    this.saveDashboardLayout();
-    this.resizeState = null;
-  }
-
-  private saveDashboardLayout() {
-    const wrap = this.containerEl.querySelector(".workbench-container");
-    if (!wrap) return;
-    // 仅保存画布内卡片（排除子页固定面板）
-    const cards = wrap.querySelectorAll<HTMLElement>(
-      ".wb-widgets .wb-panel, .wb-widgets .wb-kpi-card, .wb-widgets .wb-chart"
-    );
-    const layout: Record<string, { x: number; y: number; w: number; h: number; collapsed?: boolean }> = {};
-    cards.forEach((el) => {
-      const id = el.dataset.id || `card-${Math.random()}`;
-      layout[id] = {
-        x: el.offsetLeft,
-        y: el.offsetTop,
-        w: el.offsetWidth,
-        h: el.offsetHeight,
-        collapsed: el.classList.contains("wb-panel") && el.classList.contains("collapsed") || undefined,
-      };
-    });
-    this.plugin.settings.dashboardLayout = layout;
-    this.plugin.saveSettings();
-  }
-
-  /** 背景动效：气泡 + 海浪 + 罗盘 */
-  private buildEffects(container: HTMLElement) {
-    // 气泡
-    for (let i = 0; i < 12; i++) {
-      const b = container.createDiv({ cls: "wb-bubble" });
-      const size = 6 + Math.random() * 14;
-      b.style.width = size + "px";
-      b.style.height = size + "px";
-      b.style.left = Math.random() * 100 + "%";
-      b.style.animationDuration = 9 + Math.random() * 14 + "s";
-      b.style.animationDelay = -Math.random() * 20 + "s";
-    }
-    // 海浪
-    const waves = container.createDiv({ cls: "wb-waves" });
-    waves.innerHTML = `<svg viewBox="0 0 1440 120" preserveAspectRatio="none" style="width:100%;height:100%">
-      <path d="M0,60 C240,20 480,100 720,60 C960,20 1200,100 1440,60 L1440,120 L0,120 Z"/>
-      <path d="M0,80 C240,40 480,120 720,80 C960,40 1200,120 1440,80 L1440,120 L0,120 Z"/>
-      <path d="M0,100 C240,60 480,140 720,100 C960,60 1200,140 1440,100 L1440,120 L0,120 Z"/>
-    </svg>`;
-    // 罗盘（左下角，指针缓摆）
-    const compass = container.createDiv({ cls: "wb-compass" });
-    compass.innerHTML = `<svg viewBox="0 0 100 100" style="width:100%;height:100%">
-      <circle class="ring" cx="50" cy="50" r="46"/>
-      <circle class="ring2" cx="50" cy="50" r="38"/>
-      <g class="tick" stroke-width="1">
-        <line x1="50" y1="6" x2="50" y2="14"/>
-        <line x1="50" y1="86" x2="50" y2="94"/>
-        <line x1="6" y1="50" x2="14" y2="50"/>
-        <line x1="86" y1="50" x2="94" y2="50"/>
-      </g>
-      <g class="wb-compass-needle" style="transform-origin:50px 50px">
-        <polygon class="needle-n" points="50,16 56,52 50,58 44,52"/>
-        <polygon class="needle-s" points="50,84 56,48 50,42 44,48"/>
-      </g>
-      <circle class="hub" cx="50" cy="50" r="6"/>
-    </svg>`;
-    // 日月背景（右上角，随主题显示）
-    const sky = container.createDiv({ cls: "wb-sky" });
-    sky.innerHTML = `
-      <svg class="wb-moon" viewBox="0 0 72 72" style="width:100%;height:100%">
-        <circle cx="36" cy="36" r="16" fill="#f4e7c5" opacity=".9"/>
-        <circle cx="36" cy="36" r="24" fill="#f4e7c5" opacity=".15"/>
-      </svg>
-      <svg class="wb-sun" viewBox="0 0 72 72" style="width:100%;height:100%">
-        <circle cx="36" cy="36" r="14" fill="#fde68a" opacity=".9"/>
-        <circle cx="36" cy="36" r="22" fill="#fde68a" opacity=".2"/>
-      </svg>`;
   }
 
   /* ═══════════════════════════ 聚合页 ═══════════════════════════ */

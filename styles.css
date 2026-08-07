@@ -992,12 +992,89 @@ body.theme-light .wb-bubble {
   50% { transform: rotate(5deg); }
 }
 
-/* ── 空状态 ── */
+/* ── 空状态（统一：虚线框 + 居中 + 柔和底色） ── */
 .wb-empty {
   text-align: center;
   color: var(--wb-sub);
   font-size: 13px;
-  padding: 18px 0;
+  padding: 22px 14px;
+  border: 1px dashed var(--wb-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--wb-card) 55%, transparent);
+  margin: 4px 0;
+  line-height: 1.7;
+  opacity: .85;
+}
+
+/* ── 骨架屏（加载占位） ── */
+.wb-sk-sidebar {
+  gap: 6px;
+}
+.wb-sk-hero {
+  height: 120px;
+  border-radius: 14px;
+  border: 1px solid var(--wb-border);
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+.wb-sk-line {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--background-modifier-form-field);
+  position: relative;
+  overflow: hidden;
+}
+.wb-sk-line::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .12), transparent);
+  animation: wb-sk-shimmer 1.4s infinite;
+}
+.wb-sk-line.w70 { width: 70%; }
+.wb-sk-line.w40 { width: 40%; }
+.wb-sk-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.wb-sk-card {
+  height: 80px;
+  border-radius: 14px;
+  border: 1px solid var(--wb-border);
+  background: var(--background-modifier-form-field);
+  position: relative;
+  overflow: hidden;
+}
+.wb-sk-card::after,
+.wb-sk-row::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .12), transparent);
+  animation: wb-sk-shimmer 1.4s infinite;
+}
+.wb-sk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wb-sk-row {
+  height: 18px;
+  border-radius: 6px;
+  background: var(--background-modifier-form-field);
+  position: relative;
+  overflow: hidden;
+}
+@keyframes wb-sk-shimmer {
+  100% { transform: translateX(100%); }
 }
 
 /* ── 页面（详情子页） ── */
