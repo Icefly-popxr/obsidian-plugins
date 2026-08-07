@@ -15,6 +15,10 @@ export interface SharedStock {
   driver: string;
   horizon: string;
   position: string;
+  /** 入选理由 */
+  reason?: string;
+  /** 自定义标签 */
+  label?: string;
 }
 
 export interface SharedTopic {

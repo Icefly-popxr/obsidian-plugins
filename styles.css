@@ -2590,3 +2590,184 @@ body.theme-light .dash-heat-cell.on.c1 { background: #93c5fd; }
   color: #fff;
 }
 
+/* ═══════════ 英语打卡（移植自 Web 端 dashboard Checkin） ═══════════ */
+/* ── 背景音乐播放器（board 页） ── */
+.dash-music-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.dash-music-url {
+  flex: 1;
+  min-width: 140px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border: 1px solid var(--wb-border);
+  border-radius: 8px;
+  background: var(--background-modifier-form-field);
+  color: var(--text-normal);
+}
+.dash-music-row > span {
+  font-size: 12px;
+  color: var(--wb-sub);
+}
+.dash-music-vol {
+  flex: 0 0 90px;
+  accent-color: var(--interactive-accent);
+}
+.dash-music-row .dash-timer-controls {
+  padding: 6px 14px;
+  white-space: nowrap;
+}
+
+.english-milestones {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 4px;
+  flex-wrap: wrap;
+}
+.english-milestone {
+  font-size: 11px;
+  padding: 2px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--wb-border);
+  color: var(--wb-sub);
+  opacity: .5;
+}
+.english-milestone.on {
+  opacity: 1;
+  background: rgba(16, 185, 129, .12);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, .35);
+}
+
+.english-word-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.english-word {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--wb-border);
+  border-radius: 10px;
+  background: var(--background-secondary);
+  margin-bottom: 8px;
+}
+.english-word:last-child { margin-bottom: 0; }
+.english-word.done {
+  border-color: rgba(16, 185, 129, .35);
+  background: rgba(16, 185, 129, .05);
+}
+.english-word-check {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--wb-border);
+  background: transparent;
+  color: transparent;
+  font-size: 13px;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.english-word-check:hover { border-color: #10b981; }
+.english-word.done .english-word-check {
+  background: #10b981;
+  border-color: #10b981;
+  color: #fff;
+}
+.english-word-main { flex: 1; min-width: 0; }
+.english-word-text { font-size: 15px; font-weight: 600; }
+.english-word-pos {
+  font-size: 11px;
+  color: var(--wb-sub);
+  margin: 0 6px 0 8px;
+  font-weight: 400;
+}
+.english-word-phon {
+  font-size: 12px;
+  color: var(--wb-gold, #fbbf24);
+  font-family: var(--wb-mono, monospace);
+  font-weight: 400;
+}
+.english-word-mean {
+  font-size: 13px;
+  color: var(--text-normal);
+  margin-top: 2px;
+}
+.english-word-ex {
+  font-size: 12px;
+  color: var(--wb-sub);
+  margin-top: 4px;
+  font-style: italic;
+}
+.english-word-ex-cn {
+  font-size: 12px;
+  color: var(--wb-sub);
+  opacity: .8;
+  margin-top: 1px;
+}
+.english-word.done .english-word-text,
+.english-word.done .english-word-mean {
+  color: var(--wb-sub);
+  text-decoration: line-through;
+}
+.english-word-btns {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+}
+.english-word-speak,
+.english-word-record {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--wb-border);
+  background: var(--background-modifier-form-field);
+  cursor: pointer;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .1s, background .15s;
+}
+.english-word-speak:hover,
+.english-word-record:hover { background: var(--background-modifier-hover); }
+.english-word-speak:active,
+.english-word-record:active { transform: scale(.9); }
+.english-word-record.recording {
+  background: rgba(239, 68, 68, .18);
+  border-color: #ef4444;
+  animation: wb-pulse 1s infinite;
+}
+@keyframes wb-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, .4); }
+  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+}
+.english-word-rt { margin-top: 6px; }
+.english-rt-hint {
+  font-size: 12px;
+  color: #ef4444;
+}
+.english-rt-audio { display: block; }
+.english-rt-tip {
+  font-size: 11px;
+  color: var(--wb-sub);
+  margin-top: 4px;
+}
+
+.dash-heat-cell.today {
+  outline: 1px solid var(--wb-gold, #fbbf24);
+  outline-offset: 1px;
+}
+

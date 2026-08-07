@@ -1,6 +1,7 @@
 import { Plugin, WorkspaceLeaf, Notice, PluginSettingTab, App, Setting } from "obsidian";
 import { WorkbenchView, WORKBENCH_VIEW_TYPE } from "./views/WorkbenchView";
 import { HabitData, defaultHabits } from "./services/habitService";
+import { EnglishRecord } from "./services/englishService";
 import { WIDGETS, getWidget } from "./widgets/registry";
 import { migrateSharedFromDataJson } from "./services/sharedStore";
 
@@ -15,6 +16,18 @@ interface WorkbenchSettings {
   habitNoteFolder: string;
   /** 习惯打卡数据（插件私有存储） */
   habits: HabitData;
+  /** 英语打卡记录（每日勾选单词，与 Web 端 english_records 同构） */
+  englishRecords: EnglishRecord[];
+  /** 锻炼背景音乐 URL（空 = 默认 SoundHelix） */
+  workoutMusicUrl?: string;
+  /** 锻炼背景音乐音量 0-1 */
+  workoutMusicVol?: number;
+  /** 锻炼背景音乐播放状态：playing / paused */
+  workoutMusicState?: string;
+  /** 播客续播记忆：audioPath -> {pos 秒, updatedAt} */
+  podcastProgress?: Record<string, { pos: number; updatedAt: string }>;
+  /** 播客收听统计：date(YYYY-MM-DD) -> {audioPath: count}（30 天热力图用） */
+  podcastStat?: Record<string, Record<string, number>>;
   /** 自定义 hero 头图（base64 data URL，空 = 默认内置图） */
   heroImageDataUrl: string;
   /** 仪表盘布局：key = 元素 data-id，value = {x, y, w, h} */
@@ -42,6 +55,7 @@ const DEFAULT_SETTINGS: WorkbenchSettings = {
   reviewField: "review",
   habitNoteFolder: "01 - Projects 项目/打卡",
   habits: defaultHabits(),
+  englishRecords: [],
   heroImageDataUrl: "",
   dashboardLayout: {},
   activeWidgets: WIDGETS.map((w) => w.id),

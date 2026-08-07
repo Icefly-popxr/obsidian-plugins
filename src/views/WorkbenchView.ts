@@ -16,6 +16,22 @@ import {
   HabitData,
   defaultHabits,
 } from "../services/habitService";
+import {
+  EnglishRecord,
+  englishGroupForToday,
+  findTodayRecord,
+  calcEnglishTotal,
+  calcEnglishStreak,
+  calcMasteredWords,
+  last30Days as englishLast30,
+  ENGLISH_MILESTONES,
+} from "../services/englishService";
+import {
+  fetchNewsByCategory,
+  fetchAllNews,
+  NewsItem,
+  NEWS_CAT_TITLES,
+} from "../services/newsService";
 import { TFile } from "obsidian";
 import { MoltenBackground } from "../backgrounds/MoltenBackground";
 import { crewBackdropDataUri } from "../backgrounds/crewBackdrop";
@@ -24,6 +40,19 @@ import { loadSharedData, saveSharedData, SharedData, defaultSharedData } from ".
 import type { WidgetCtx, LoadedData } from "../widgets/types";
 
 export const WORKBENCH_VIEW_TYPE = "knowledge-workbench-view";
+
+/** 播客收听统计 → 最近 30 天是否有收听的布尔数组（旧 → 新） */
+function podcastLast30Days(stat: Record<string, Record<string, number>>): boolean[] {
+  const out: boolean[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const dayStat = stat[key];
+    out.push(!!dayStat && Object.keys(dayStat).length > 0);
+  }
+  return out;
+}
 
 type Page = "home" | "domains" | "wiki" | "podcast" | "board" | "config" | "news" | "stocks" | "topics";
 
@@ -1071,6 +1100,10 @@ export class WorkbenchView extends ItemView {
         seek.value = String((audio.currentTime / audio.duration) * 100);
         posLabel.setText(fmt(audio.currentTime));
       }
+      // 续播记忆：节流保存（每 5 秒一次）
+      if (audio.currentTime > 0 && Math.floor(audio.currentTime) % 5 === 0) {
+        this.savePodcastProgress(currentFile?.path || "", audio.currentTime);
+      }
     });
     audio.addEventListener("loadedmetadata", () => {
       durLabel.setText("/ " + fmt(audio.duration || 0));
@@ -1078,14 +1111,27 @@ export class WorkbenchView extends ItemView {
     audio.addEventListener("ended", nextTrack);
 
     let currentIdx = 0;
+    let currentFile: { path: string; basename: string } | null = null;
     const playTrack = (idx: number) => {
       const f = audioFiles[idx];
       if (!f) return;
       currentIdx = idx;
+      currentFile = { path: f.path, basename: f.basename };
       nowTitle.setText(f.basename);
       audio.src = this.app.vault.getResourcePath(f);
+      // 续播记忆：恢复到上次播放位置
+      const prog = (this.plugin.settings.podcastProgress || {})[f.path];
+      const onLoaded = () => {
+        if (prog && prog.pos > 3 && audio.duration && audio.currentTime === 0) {
+          audio.currentTime = Math.min(prog.pos, audio.duration - 1);
+        }
+        audio.removeEventListener("loadedmetadata", onLoaded);
+      };
+      audio.addEventListener("loadedmetadata", onLoaded);
       audio.play().catch(() => {});
       playBtn.setText("⏸");
+      // 收听统计：当天记录一次
+      this.markPodcastStat(f.path);
     };
     function nextTrack() {
       playTrack((currentIdx + 1) % Math.max(1, audioFiles.length));
@@ -1125,13 +1171,15 @@ export class WorkbenchView extends ItemView {
       });
     });
 
-    // 近 30 天收听热力图
+    // 近 30 天收听热力图（真实收听统计 podcastStat，替代习惯打卡天数）
     const heatCard = page.createDiv({ cls: "dash-review-card" });
     const heatMeta = heatCard.createDiv({ cls: "dash-meta" });
     heatMeta.createSpan({ text: "🔥 近 30 天收听" });
-    heatMeta.createSpan({ text: habit?.name || "播客" });
+    heatMeta.createSpan({ text: "真实收听记录" });
     const heat = heatCard.createDiv({ cls: "dash-heat-grid" });
-    lastNDays(days, 30).forEach((on, i) => {
+    const stat = this.plugin.settings.podcastStat || {};
+    const heatCells = podcastLast30Days(stat);
+    heatCells.forEach((on, i) => {
       heat.createDiv({ cls: "dash-heat-cell" + (on ? " on " + this.heatLevel(i) : "") });
     });
 
@@ -1268,6 +1316,8 @@ export class WorkbenchView extends ItemView {
       stopBtn.style.display = "";
       remainingSec = selectedMin * 60;
       timerHandle = window.setInterval(tick, 1000);
+      // 开始锻炼 → 自动播放背景音乐
+      playMusic();
     });
     stopBtn.addEventListener("click", () => {
       if (timerHandle) window.clearInterval(timerHandle);
@@ -1277,7 +1327,92 @@ export class WorkbenchView extends ItemView {
       stopBtn.style.display = "none";
       display.setText(fmt(selectedMin * 60));
       state.setText("未开始");
+      pauseMusic();
     });
+
+    // ── 背景音乐播放器（移植自 Web 端 dashboard Checkin） ──
+    const musicCard = page.createDiv({ cls: "dash-review-card" });
+    musicCard.createDiv({ cls: "dash-meta", text: "🎵 背景音乐" });
+    const musicRow = musicCard.createDiv({ cls: "dash-music-row" });
+    const musicUrlIn = musicRow.createEl("input", {
+      cls: "dash-music-url",
+      attr: {
+        type: "text",
+        placeholder: "音乐 URL（留空 = 默认）",
+        value: this.plugin.settings.workoutMusicUrl || "",
+      },
+    });
+    const musicToggle = musicRow.createEl("button", {
+      cls: "dash-timer-controls",
+      text: this.plugin.settings.workoutMusicState === "playing" ? "⏸️ 暂停" : "🎵 播放",
+    });
+    musicRow.createSpan({ text: "音量" });
+    const musicVol = musicRow.createEl("input", {
+      cls: "dash-music-vol",
+      attr: {
+        type: "range",
+        min: "0",
+        max: "1",
+        step: "0.05",
+        value: String(this.plugin.settings.workoutMusicVol ?? 0.6),
+      },
+    });
+    const workoutAudio = page.createEl("audio", { attr: { hidden: "true" } });
+    workoutAudio.volume = Number(this.plugin.settings.workoutMusicVol ?? 0.6);
+
+    const resolveMusicUrl = () => {
+      const raw = musicUrlIn.value.trim();
+      let saved = this.plugin.settings.workoutMusicUrl || "";
+      // 兼容旧数据：失效的 pixabay 直链忽略，回退默认
+      if (saved.includes("cdn.pixabay.com")) saved = "";
+      const url = raw || saved || "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+      this.plugin.settings.workoutMusicUrl = url;
+      this.plugin.saveSettings();
+      return url;
+    };
+    const syncMusicUI = () => {
+      musicToggle.setText(
+        this.plugin.settings.workoutMusicState === "playing" ? "⏸️ 暂停" : "🎵 播放"
+      );
+    };
+    const playMusic = () => {
+      const url = resolveMusicUrl();
+      workoutAudio.src = url;
+      workoutAudio.volume = Number(musicVol.value || 0.6);
+      workoutAudio.play().catch(() => new Notice("音乐播放失败，检查网络或 URL"));
+      this.plugin.settings.workoutMusicState = "playing";
+      this.plugin.saveSettings();
+      syncMusicUI();
+    };
+    const pauseMusic = () => {
+      workoutAudio.pause();
+      this.plugin.settings.workoutMusicState = "paused";
+      this.plugin.saveSettings();
+      syncMusicUI();
+    };
+    musicToggle.addEventListener("click", () => {
+      if (this.plugin.settings.workoutMusicState === "playing") pauseMusic();
+      else playMusic();
+    });
+    musicVol.addEventListener("input", () => {
+      workoutAudio.volume = Number(musicVol.value || 0.6);
+      this.plugin.settings.workoutMusicVol = Number(musicVol.value || 0.6);
+      this.plugin.saveSettings();
+    });
+    musicUrlIn.addEventListener("change", () => {
+      const val = musicUrlIn.value.trim();
+      this.plugin.settings.workoutMusicUrl = val;
+      this.plugin.saveSettings();
+      if (this.plugin.settings.workoutMusicState === "playing" && val) {
+        workoutAudio.src = val;
+        workoutAudio.play().catch(() => {});
+      }
+      new Notice(val ? "音乐链接已保存" : "已清空，将使用默认音乐");
+    });
+    // 恢复上次播放状态（render 重建页面后自动续播）
+    if (this.plugin.settings.workoutMusicState === "playing") {
+      playMusic();
+    }
 
     // 30 天热力图
     const heatCard = page.createDiv({ cls: "dash-review-card" });
@@ -1321,7 +1456,255 @@ export class WorkbenchView extends ItemView {
       new Notice(habit?.today ? "已取消今日打卡" : "打卡成功！🔥");
       this.render();
     });
+
+    // 英语打卡（移植自 Web 端 dashboard Checkin 模块）
+    this.renderEnglish(page);
   }
+
+  /** 英语打卡：今日 3 词 + 跟读/录音 + 统计 + 热力图 */
+  private renderEnglish(page: HTMLElement) {
+    const records: EnglishRecord[] = this.plugin.settings.englishRecords || [];
+    const words = englishGroupForToday();
+    const todayRec = findTodayRecord(records);
+    const doneWords = todayRec ? todayRec.words : [];
+    const legacyDone = !!todayRec && !Array.isArray(todayRec.words);
+
+    const card = page.createDiv({ cls: "dash-review-card" });
+    card.createDiv({ cls: "dash-meta", text: "🇬🇧 英语打卡" });
+
+    // 累计统计格
+    const statGrid = card.createDiv({ cls: "dash-stat-grid" });
+    const mkStat = (num: string, label: string) => {
+      const c = statGrid.createDiv({ cls: "dash-stat-cell" });
+      c.createDiv({ cls: "dash-stat-num", text: num });
+      c.createDiv({ cls: "dash-stat-label", text: label });
+    };
+    mkStat(String(calcEnglishTotal(records)), "累计天数");
+    mkStat(String(calcEnglishStreak(records)), "当前连续");
+    mkStat(String(calcMasteredWords(records)), "已掌握单词");
+
+    // 里程碑
+    const msRow = card.createDiv({ cls: "english-milestones" });
+    ENGLISH_MILESTONES.forEach((m) => {
+      msRow.createSpan({
+        cls: "english-milestone" + (records.length >= m.n ? " on" : ""),
+        text: `${m.icon} ${m.n} 天`,
+      });
+    });
+
+    // 今日 3 个单词
+    const dateLabel = new Date();
+    const dayLabel = card.createDiv({
+      cls: "dash-meta",
+      text: `📅 今日 3 词 · ${dateLabel.getMonth() + 1}月${dateLabel.getDate()}日`,
+      attr: { style: "margin-top:10px;" },
+    });
+    void dayLabel;
+    const list = card.createDiv({ cls: "english-word-list" });
+
+    words.forEach((w, i) => {
+      const done = legacyDone || doneWords.includes(w[0]);
+      const item = list.createDiv({ cls: "english-word" + (done ? " done" : "") });
+      // 勾选
+      const check = item.createEl("button", {
+        cls: "english-word-check",
+        text: done ? "✓" : "",
+      });
+      check.addEventListener("click", () => this.toggleEnglishWord(i));
+      // 主体
+      const main = item.createDiv({ cls: "english-word-main" });
+      const textRow = main.createDiv({ cls: "english-word-text" });
+      textRow.createSpan({ text: w[0] });
+      textRow.createSpan({ cls: "english-word-pos", text: w[2] });
+      textRow.createSpan({ cls: "english-word-phon", text: w[1] });
+      main.createDiv({ cls: "english-word-mean", text: w[3] });
+      main.createDiv({ cls: "english-word-ex", text: w[4] });
+      main.createDiv({ cls: "english-word-ex-cn", text: w[5] });
+      const rt = main.createDiv({ cls: "english-word-rt", attr: { id: `english-rt-${i}` } });
+      void rt;
+      // 按钮
+      const btns = item.createDiv({ cls: "english-word-btns" });
+      const speak = btns.createEl("button", {
+        cls: "english-word-speak",
+        text: "🔊",
+        attr: { title: "标准发音" },
+      });
+      speak.addEventListener("click", () => this.speakEnglishWord(i));
+      const rec = btns.createEl("button", {
+        cls: "english-word-record",
+        text: "🎤",
+        attr: { id: `english-rec-${i}`, title: "跟读录音" },
+      });
+      rec.addEventListener("click", () => this.recordEnglishWord(i));
+    });
+
+    // 30 天热力图
+    const heatCard = page.createDiv({ cls: "dash-review-card" });
+    heatCard.createDiv({ cls: "dash-meta", text: "🔥 英语打卡 · 最近 30 天" });
+    const heat = heatCard.createDiv({ cls: "dash-heat-grid" });
+    englishLast30(records).forEach((c, i) => {
+      const cell = heat.createDiv({
+        cls: "dash-heat-cell" + (c.on ? " on " + this.heatLevel(i) : "") + (c.isToday ? " today" : ""),
+      });
+      void cell;
+    });
+  }
+
+  /** 勾选/取消今天第 i 个单词；3 个全勾 = 今日打卡完成 */
+  private toggleEnglishWord(i: number) {
+    const words = englishGroupForToday();
+    const word = words[i][0];
+    const records: EnglishRecord[] = this.plugin.settings.englishRecords || [];
+    const today = this.todayStr();
+    let rec = records.find((r) => r.date === today);
+    if (!rec) {
+      rec = { date: today, words: [] };
+      records.push(rec);
+    }
+    if (!Array.isArray(rec.words)) rec.words = [];
+    const idx = rec.words.indexOf(word);
+    if (idx >= 0) rec.words.splice(idx, 1);
+    else rec.words.push(word);
+    this.plugin.settings.englishRecords = records;
+    this.plugin.saveSettings();
+
+    const allDone = words.every((w) => rec!.words.includes(w[0]));
+    if (allDone) {
+      new Notice("🎉 今日 3 个单词全部完成！");
+    } else if (rec.words.length === 0) {
+      new Notice("已取消今天的单词");
+    }
+    this.render();
+  }
+
+  /** 跟读发音：优先 speechSynthesis 美音 */
+  private speakEnglishWord(i: number) {
+    const words = englishGroupForToday();
+    const word = words[i][0];
+    if (!("speechSynthesis" in window)) {
+      new Notice("当前环境缺少语音朗读功能（speechSynthesis）");
+      return;
+    }
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(word);
+    u.lang = "en-US";
+    u.rate = 0.8;
+    const voices = speechSynthesis.getVoices();
+    if (voices && voices.length) {
+      const pick =
+        voices.find((v) => v.lang === "en-US" && /google us english|zira|samantha|natural|aria|jenny|guy/i.test(v.name)) ||
+        voices.find((v) => v.lang === "en-US") ||
+        voices.find((v) => v.lang && v.lang.toLowerCase().startsWith("en"));
+      if (pick) u.voice = pick;
+    }
+    speechSynthesis.speak(u);
+  }
+
+  /** 跟读录音：MediaRecorder，录完回放 */
+  private async recordEnglishWord(i: number) {
+    const btn = document.getElementById(`english-rec-${i}`);
+    const rtBox = document.getElementById(`english-rt-${i}`);
+    if (!btn || !rtBox) return;
+
+    const audioEl = rtBox.querySelector("audio") as HTMLAudioElement | null;
+    if (audioEl && audioEl.dataset.recording === "1") {
+      // 正在录这个词 → 停止
+      if (this._recorder && this._recorder.state === "recording") {
+        this._recorder.stop();
+      }
+      return;
+    }
+    if (this._recorder && this._recorder.state === "recording") {
+      this._recorder.stop();
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      new Notice("当前环境不支持录音（getUserMedia），请在 Obsidian 桌面端使用");
+      return;
+    }
+    if (!window.MediaRecorder) {
+      new Notice("当前环境不支持录音（MediaRecorder）");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this._recChunks = [];
+      this._recIdx = i;
+      const rec = new MediaRecorder(stream);
+      this._recorder = rec;
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) this._recChunks.push(e.data);
+      };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(this._recChunks, { type: rec.mimeType || "audio/webm" });
+        this.showEnglishRecording(i, blob);
+        if (btn) {
+          btn.setText("🎤");
+          btn.removeClass("recording");
+        }
+        this._recIdx = -1;
+      };
+      rec.start();
+      btn.setText("⏹");
+      btn.addClass("recording");
+      rtBox.empty();
+      rtBox.createDiv({ cls: "english-rt-hint", text: "🎙 录音中… 再点一次 🎤 停止" });
+      // 标记正在录音（stop 按钮判定）
+      const marker = rtBox.createEl("audio", { attr: { hidden: "true", "data-recording": "1" } });
+      void marker;
+    } catch (e) {
+      const name = (e as { name?: string })?.name || "";
+      if (name === "NotAllowedError") new Notice("❌ 麦克风权限被拒绝——请在系统设置中允许");
+      else if (name === "NotFoundError" || name === "DevicesNotFoundError") new Notice("❌ 没检测到麦克风设备");
+      else if (name === "NotReadableError") new Notice("❌ 麦克风被其他应用占用");
+      else new Notice("❌ 无法录音：" + ((e as { message?: string })?.message || "未知错误"));
+    }
+  }
+
+  /** 录音完成 → 回放 */
+  private showEnglishRecording(i: number, blob: Blob) {
+    const rtBox = document.getElementById(`english-rt-${i}`);
+    if (!rtBox) return;
+    const url = URL.createObjectURL(blob);
+    rtBox.empty();
+    const audio = rtBox.createEl("audio", {
+      cls: "english-rt-audio",
+      attr: { controls: "true", src: url },
+    });
+    audio.style.width = "100%";
+    audio.style.height = "34px";
+    rtBox.createDiv({ cls: "english-rt-tip", text: "▶ 回放你的跟读" });
+  }
+
+  private todayStr(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  /** 保存播客续播进度（audioPath -> pos） */
+  private savePodcastProgress(path: string, pos: number) {
+    if (!path) return;
+    const prog = this.plugin.settings.podcastProgress || {};
+    prog[path] = { pos, updatedAt: new Date().toISOString() };
+    this.plugin.settings.podcastProgress = prog;
+    this.plugin.saveSettings();
+  }
+
+  /** 标记当天收听一次（podcastStat: date -> {path: count}） */
+  private markPodcastStat(path: string) {
+    if (!path) return;
+    const key = this.todayStr();
+    const stat = this.plugin.settings.podcastStat || {};
+    const day = stat[key] || {};
+    day[path] = (day[path] || 0) + 1;
+    stat[key] = day;
+    this.plugin.settings.podcastStat = stat;
+    this.plugin.saveSettings();
+  }
+
+  private _recorder: MediaRecorder | null = null;
+  private _recChunks: Blob[] = [];
+  private _recIdx = -1;
 
   private renderConfig(page: HTMLElement) {
     // ── 🚀 知识库工作台快捷入口 ──
@@ -1585,60 +1968,81 @@ export class WorkbenchView extends ItemView {
     }
   }
 
+  /** 行业新闻页：真实采集（人民网/中新网/知乎热榜/36kr/aihot），替代关键词扫描 */
   private renderNews(page: HTMLElement) {
-
-    const groups: { label: string; icon: string; keywords: string[] }[] = [
-      { label: "全部", icon: "🗞️", keywords: ["新闻", "News", "行业", "日报"] },
-      { label: "AI", icon: "🤖", keywords: ["AI", "人工智能", "大模型", "GPT"] },
-      { label: "财经", icon: "💰", keywords: ["财经", "经济", "宏观", "行情"] },
-      { label: "科技", icon: "🔬", keywords: ["科技", "芯片", "半导体", "数码"] },
+    const cats: { id: string; icon: string; label: string }[] = [
+      { id: "all", icon: "🗞️", label: "全部" },
+      { id: "politics", icon: "🏛️", label: "时政" },
+      { id: "finance", icon: "💰", label: "财经" },
+      { id: "ai", icon: "🤖", label: "AI" },
     ];
-
-    const base = this.plugin.settings.knowledgeBasePath;
-    const allFiles = this.app.vault.getMarkdownFiles().filter((f) => {
-      if (base && !f.path.startsWith(base)) return false;
-      return true;
-    });
 
     const tabs = page.createDiv({ cls: "dash-tabs" });
     const listWrap = page.createDiv();
+    const tip = page.createDiv({
+      cls: "dash-meta",
+      text: "来源：人民网 · 中新网 · 知乎热榜 · 36kr · aihot（实时拉取）",
+      attr: { style: "margin-bottom:8px;" },
+    });
 
-    const renderGroup = (keywords: string[]) => {
+    let currentCat = "all";
+    const setLoading = () => {
       listWrap.empty();
-      const sorted = allFiles
-        .filter((f) => {
-          const name = f.basename + " " + f.path;
-          return keywords.some((k) => name.includes(k));
-        })
-        .sort((a, b) => b.stat.mtime - a.stat.mtime);
+      const loading = listWrap.createDiv({ cls: "dash-empty", text: "⏳ 正在拉取…" });
+      void loading;
+    };
 
-      if (sorted.length === 0) {
-        listWrap.createDiv({ cls: "dash-empty", text: "暂无内容，可在笔记标题中加入关键词" });
+    const renderItems = (items: NewsItem[]) => {
+      listWrap.empty();
+      if (items.length === 0) {
+        listWrap.createDiv({ cls: "dash-empty", text: "暂无内容，稍后刷新试试" });
         return;
       }
       const list = listWrap.createDiv({ cls: "dash-list" });
-      sorted.slice(0, 30).forEach((f, i) => {
+      items.forEach((f, i) => {
         const item = list.createDiv({ cls: "dash-item" });
         item.createSpan({ cls: "dash-item-num", text: String(i + 1) });
         const main = item.createDiv({ cls: "dash-item-main" });
-        main.createDiv({ cls: "dash-item-title", text: f.basename });
-        main.createDiv({ cls: "dash-item-sub", text: this.fmtDate(f.stat.mtime) + " · " + (f.path.split("/")[0] || "根目录") });
-        item.addEventListener("click", () => openFile(this.app, f.path));
+        main.createDiv({ cls: "dash-item-title", text: f.title });
+        const sub = [f.source, f.summary].filter(Boolean).join(" · ");
+        main.createDiv({ cls: "dash-item-sub", text: sub.slice(0, 120) });
+        if (f.url) {
+          item.addEventListener("click", () => window.open(f.url, "_blank"));
+        }
       });
     };
 
-    groups.forEach((g, i) => {
+    const load = async (cat: string) => {
+      setLoading();
+      try {
+        const items =
+          cat === "all"
+            ? await fetchAllNews(10)
+            : await fetchNewsByCategory(cat as "politics" | "finance" | "ai", 10);
+        renderItems(items);
+      } catch (e) {
+        console.error("[workbench] 新闻采集失败", e);
+        listWrap.empty();
+        listWrap.createDiv({ cls: "dash-empty", text: "采集失败，请检查网络后重试" });
+      }
+    };
+
+    cats.forEach((g, i) => {
       const t = tabs.createEl("button", {
         cls: "dash-tab" + (i === 0 ? " on" : ""),
         text: `${g.icon} ${g.label}`,
       });
       t.addEventListener("click", () => {
+        if (currentCat === g.id) return;
+        currentCat = g.id;
         tabs.querySelectorAll(".dash-tab").forEach((el) => el.removeClass("on"));
         t.addClass("on");
-        renderGroup(g.keywords);
+        load(g.id);
       });
     });
-    renderGroup(groups[0].keywords);
+    void tip;
+    void NEWS_CAT_TITLES;
+    void load("all");
   }
 
   private renderStocks(page: HTMLElement) {
@@ -1665,6 +2069,8 @@ export class WorkbenchView extends ItemView {
         if (s.driver) tags.createSpan({ cls: "dash-tag purple", text: s.driver });
         if (s.horizon) tags.createSpan({ cls: "dash-tag green", text: s.horizon });
         if (s.position) tags.createSpan({ cls: "dash-tag red", text: s.position });
+        if (s.label) tags.createSpan({ cls: "dash-tag", text: s.label });
+        if (s.reason) main.createDiv({ cls: "dash-pool-sub", text: s.reason });
         const actions = item.createDiv({ cls: "dash-pool-actions" });
         const edit = actions.createEl("button", { text: "编辑" });
         edit.addEventListener("click", () => {
@@ -1673,6 +2079,8 @@ export class WorkbenchView extends ItemView {
           codeIn.value = s.code || "";
           nameIn.value = s.name || "";
           tagIn.value = s.tag || "";
+          reasonIn.value = s.reason || "";
+          labelIn.value = s.label || "";
           statusSel.value = s.status || "观察";
           driverSel.value = s.driver || "";
           horizonSel.value = s.horizon || "";
@@ -1695,6 +2103,8 @@ export class WorkbenchView extends ItemView {
     const codeIn = form.createEl("input", { attr: { placeholder: "代码" } });
     const nameIn = form.createEl("input", { attr: { placeholder: "名称（必填）" } });
     const tagIn = form.createEl("input", { attr: { placeholder: "行业/题材" } });
+    const reasonIn = form.createEl("input", { attr: { placeholder: "入选理由" } });
+    const labelIn = form.createEl("input", { attr: { placeholder: "自定义标签" } });
     const statusSel = form.createEl("select");
     ["观察", "已买", "已卖"].forEach((o) => statusSel.createEl("option", { text: o }));
     const driverSel = form.createEl("select");
@@ -1721,6 +2131,8 @@ export class WorkbenchView extends ItemView {
         driver: driverSel.value,
         horizon: horizonSel.value,
         position: positionSel.value,
+        reason: reasonIn.value.trim(),
+        label: labelIn.value.trim(),
       };
       if (editingIdx >= 0 && editingIdx < pool.length) {
         pool[editingIdx] = data;
@@ -1730,7 +2142,7 @@ export class WorkbenchView extends ItemView {
         pool.push(data);
       }
       save();
-      codeIn.value = nameIn.value = tagIn.value = "";
+      codeIn.value = nameIn.value = tagIn.value = reasonIn.value = labelIn.value = "";
       driverSel.value = horizonSel.value = positionSel.value = "";
       renderList();
     });
