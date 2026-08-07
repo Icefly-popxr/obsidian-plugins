@@ -35,7 +35,6 @@ import {
 } from "../services/newsService";
 import { TFile } from "obsidian";
 import { MoltenBackground } from "../backgrounds/MoltenBackground";
-import { crewBackdropDataUri } from "../backgrounds/crewBackdrop";
 import { WIDGETS, getWidget, CATEGORIES, groupWidgetsByCategory } from "../widgets/registry";
 import { loadSharedData, saveSharedData, SharedData, defaultSharedData } from "../services/sharedStore";
 import { DashboardLayoutManager } from "./dashboardLayout";
@@ -276,20 +275,23 @@ export class WorkbenchView extends ItemView {
     const hero = wrap.createDiv({ cls: "wb-hero" });
     this.bgLayer = hero;
 
-    // 自定义头图媒体（支持 image / GIF 动图 / video）
+    // 默认头图 = 纯 MoltenMetal 动态背景（原版观感，不显示草帽全员图）。
+    // 只有用户主动自定义头图（image / GIF 动图 / video）时才渲染图/视频层。
     const media = this.plugin.settings.heroMedia;
-    const heroSrc = media?.src || crewBackdropDataUri();
-    if (media?.kind === "video") {
-      const v = hero.createEl("video", {
-        cls: "wb-hero-crew",
-        attr: { src: heroSrc, autoplay: "", loop: "", muted: "", playsinline: "" },
-      }) as HTMLVideoElement;
-      v.muted = true; // 确保自动播放静音（部分浏览器仅设属性不生效）
-    } else {
-      hero.createEl("img", {
-        cls: "wb-hero-crew",
-        attr: { src: heroSrc, alt: "" },
-      });
+    if (media) {
+      const heroSrc = media.src;
+      if (media.kind === "video") {
+        const v = hero.createEl("video", {
+          cls: "wb-hero-crew",
+          attr: { src: heroSrc, autoplay: "", loop: "", muted: "", playsinline: "" },
+        }) as HTMLVideoElement;
+        v.muted = true; // 确保自动播放静音（部分浏览器仅设属性不生效）
+      } else {
+        hero.createEl("img", {
+          cls: "wb-hero-crew",
+          attr: { src: heroSrc, alt: "" },
+        });
+      }
     }
 
     // 悬浮上传按钮（右上角，hover 显示）：支持图片 / GIF 动图 / 视频
@@ -310,9 +312,9 @@ export class WorkbenchView extends ItemView {
       const moltenHost = hero.createDiv({ cls: "wb-hero-molten" });
       this.molten = new MoltenBackground();
       this.molten.mount(moltenHost, {
-      color1: "#8b5cf6",   // 紫
-      color2: "#e11d2e",   // 路飞红
-      color3: "#fbbf24",   // 宝藏金
+      color1: "#5227FF",   // 蓝紫（原版 MoltenMetal 配色）
+      color2: "#FF9FFC",   // 粉
+      color3: "#FFFFFF",   // 白
       speed: 0.35,
       scale: 4,
       detail: 3,
@@ -532,11 +534,12 @@ export class WorkbenchView extends ItemView {
       // 跳过被禁用的实例（设置面板 Toggle 关闭）
       const instCfg = configs[instId] || {};
       if (instCfg.enabled === false) continue;
-      ctx.instanceId = instId;
-      ctx.widgetConfig = instCfg;
+      // 每个实例用独立 ctx 副本：闭包（如 ⚙️ 打开配置抽屉）捕获的 instanceId
+      // 必须是当前实例，不能共享同一个 ctx 对象（否则所有实例都指向最后一个）
+      const instCtx: WidgetCtx = { ...ctx, instanceId: instId, widgetConfig: instCfg };
       const host = canvas.createDiv({ cls: "wb-widget-host", attr: { "data-widget": instId } });
       try {
-        w.render(ctx, host);
+        w.render(instCtx, host);
         // 通用外观：自定义主色覆盖（widgetConfigs[instId].color，所有组件统一入口）
         if (instCfg.color) {
           host.querySelectorAll<HTMLElement>(".wb-panel, .wb-kpi-card, .wb-chart").forEach((el) => {

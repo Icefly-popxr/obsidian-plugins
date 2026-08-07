@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { emptyState, WidgetConfigDrawer, applyTitleFontSize, addTitleConfig } from "./helpers";
+import { emptyState, WidgetConfigDrawer, applyTitleFontSize, addTitleConfig, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 
 /** KC 卡片库：最近卡片列表 */
 const widget: WorkbenchWidget = {
@@ -44,6 +44,8 @@ const widget: WorkbenchWidget = {
         row.addEventListener("click", () => ctx.openFile(c.path));
       }
     }
+    // 内容渲染完成后应用正文字号（此时 .wb-badge/.wb-name/.wb-tag 元素已存在）
+    applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
 
     const handle = p.createDiv({ cls: "wb-resize-handle" });
     handle.dataset.for = "kc-card";

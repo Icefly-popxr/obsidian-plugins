@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, applyTitleFontSize, addTitleConfig, WidgetConfigDrawer } from "./helpers";
+import { createPanel, emptyState, applyTitleFontSize, addTitleConfig, WidgetConfigDrawer, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 import { dueCards } from "../services/kcService";
 
 interface ReviewCfg {
@@ -49,6 +49,8 @@ const widget: WorkbenchWidget = {
       row.createSpan({ cls: "wb-name", text: c.name });
       row.addEventListener("click", () => ctx.openFile(c.path));
     }
+    // 内容渲染完成后应用正文字号（此时 .wb-name 元素已存在）
+    applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
   },
   renderSettings(el, plugin, instanceId, save) {
     const cfgMap = plugin.settings.widgetConfigs || {};

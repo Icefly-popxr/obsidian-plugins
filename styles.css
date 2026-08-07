@@ -183,8 +183,7 @@ body.theme-light .workbench-container {
 .wb-hero-molten {
   position: absolute;
   inset: 0;
-  opacity: var(--wb-hero-molten-opacity, 0.6);
-  mix-blend-mode: screen;
+  opacity: var(--wb-hero-molten-opacity, 1.0);
   pointer-events: none;
 }
 

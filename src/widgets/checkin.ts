@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, applyTitleFontSize, addTitleConfig, WidgetConfigDrawer } from "./helpers";
+import { createPanel, emptyState, applyTitleFontSize, addTitleConfig, WidgetConfigDrawer, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 import { buildHabitRecords, toggleHabit, lastNDays, HabitRecord } from "../services/habitService";
 
 interface CheckinCfg {
@@ -75,6 +75,8 @@ const widget: WorkbenchWidget = {
       }
     };
     renderBody();
+    // 内容渲染完成后应用正文字号（此时 .wb-name 元素已存在）
+    applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
   },
   renderSettings(el, plugin, instanceId, save) {
     const cfgMap = plugin.settings.widgetConfigs || {};

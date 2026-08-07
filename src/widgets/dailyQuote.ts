@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, addFontSizeControls, WidgetConfigDrawer } from "./helpers";
+import { createPanel, addFontSizeControls, WidgetConfigDrawer, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 
 /** 每日金句：按日期取一条，可换一句（Dashboard 风格） */
 const QUOTES: [string, string][] = [
@@ -43,8 +43,8 @@ const widget: WorkbenchWidget = {
     const cfg = (ctx.widgetConfig || {}) as DailyQuoteCfg;
     const titleFontSize =
       typeof cfg.titleFontSize === "number" && cfg.titleFontSize > 0 ? cfg.titleFontSize : 14;
-    const quoteFontSize =
-      typeof cfg.quoteFontSize === "number" && cfg.quoteFontSize > 0 ? cfg.quoteFontSize : 14;
+    // 正文字号统一走 bodyFontSize（通用区「🔤 字号」分区管理）
+    const quoteFontSize = bodyFontSizeOf(ctx.widgetConfig);
 
     const bd = createPanel(root, {
       id: "daily-quote",
@@ -175,14 +175,6 @@ const widget: WorkbenchWidget = {
       t.inputEl.style.boxSizing = "border-box";
       t.inputEl.style.minWidth = "200px";
     });
-    const titleSizeSetting = new Setting(el)
-      .setName("标题字号")
-      .setDesc("标题文字与图标 emoji 大小（px）");
-    addFontSizeControls(titleSizeSetting, {
-      value:
-        typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14,
-      onChange: (v) => update({ titleFontSize: v }),
-    });
 
     new Setting(el)
       .setName("图标")
@@ -193,16 +185,6 @@ const widget: WorkbenchWidget = {
           .setValue(String(inst.icon || ""))
           .onChange((v) => update({ icon: v.trim() }))
       );
-
-    // 金句正文字号
-    const quoteSizeSetting = new Setting(el)
-      .setName("金句字号")
-      .setDesc("金句正文字号（px）");
-    addFontSizeControls(quoteSizeSetting, {
-      value:
-        typeof inst.quoteFontSize === "number" && inst.quoteFontSize > 0 ? inst.quoteFontSize : 14,
-      onChange: (v) => update({ quoteFontSize: v }),
-    });
   },
 };
 

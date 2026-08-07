@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, addFontSizeControls, WidgetConfigDrawer } from "./helpers";
+import { createPanel, emptyState, addFontSizeControls, WidgetConfigDrawer, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 
 /**
  * 最近更新组件（配置驱动）
@@ -76,6 +76,8 @@ const widget: WorkbenchWidget = {
       row.createSpan({ cls: "wb-meta", text: ctx.fmtDate(f.mtime) });
       row.addEventListener("click", () => ctx.openFile(f.path));
     }
+    // 内容渲染完成后应用正文字号（此时 .wb-name/.wb-meta 元素已存在）
+    applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
   },
   renderSettings(el, plugin, instanceId, save) {
     const cfgMap = plugin.settings.widgetConfigs || {};
@@ -111,14 +113,6 @@ const widget: WorkbenchWidget = {
       t.inputEl.style.width = "100%";
       t.inputEl.style.boxSizing = "border-box";
       t.inputEl.style.minWidth = "200px";
-    });
-    const titleSizeSetting = new Setting(el)
-      .setName("标题字号")
-      .setDesc("标题文字与图标 emoji 大小（px）");
-    addFontSizeControls(titleSizeSetting, {
-      value:
-        typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14,
-      onChange: (v) => update({ titleFontSize: v }),
     });
 
     new Setting(el)

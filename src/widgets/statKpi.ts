@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, addFontSizeControls, WidgetConfigDrawer } from "./helpers";
+import { createPanel, addFontSizeControls, WidgetConfigDrawer, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 import { buildHabitRecords, lastNDays } from "../services/habitService";
 
 /**
@@ -175,14 +175,6 @@ const widget: WorkbenchWidget = {
       plugin.settings.widgetConfigs = cfgMap;
       save();
     };
-
-    // 标题字号
-    const sizeSetting = new Setting(el).setName("字号").setDesc("标题与卡片文字大小（px）");
-    addFontSizeControls(sizeSetting, {
-      value:
-        typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14,
-      onChange: (v) => update({ titleFontSize: v }),
-    });
 
     // ── KPI 卡条目编辑器 ──
     el.createEl("h4", {

@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, addTitleConfig, WidgetConfigDrawer } from "./helpers";
+import { createPanel, emptyState, addTitleConfig, WidgetConfigDrawer, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 
 /**
  * 页面导航组件（nav-links）：页面导航列表
@@ -105,6 +105,8 @@ const widget: WorkbenchWidget = {
       void go;
       row.addEventListener("click", () => ctx.goto(it.page || "home"));
     });
+    // 内容渲染完成后应用正文字号（此时 .wb-name/.wb-meta 元素已存在）
+    applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
   },
   renderSettings(el, plugin, instanceId, save) {
     const cfgMap = plugin.settings.widgetConfigs || {};

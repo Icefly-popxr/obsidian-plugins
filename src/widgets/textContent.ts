@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, addFontSizeControls, WidgetConfigDrawer } from "./helpers";
+import { createPanel, emptyState, addFontSizeControls, WidgetConfigDrawer, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 
 /**
  * 通用文字内容组件（分类通用组件第一类，验证"配置驱动"模式）
@@ -80,7 +80,7 @@ const widget: WorkbenchWidget = {
     const body = bd.createDiv({
       cls: "wb-text-content",
       attr: {
-        style: `font-size:${cfg.fontSize}px;text-align:${cfg.align};white-space:pre-wrap;line-height:1.7;word-break:break-word;`,
+        style: `font-size:${bodyFontSizeOf(ctx.widgetConfig)}px;text-align:${cfg.align};white-space:pre-wrap;line-height:1.7;word-break:break-word;`,
       },
       text,
     });
@@ -129,15 +129,6 @@ const widget: WorkbenchWidget = {
       t.inputEl.style.boxSizing = "border-box";
       t.inputEl.style.minWidth = "200px";
     });
-    const titleSizeSetting = new Setting(el)
-      .setName("标题字号")
-      .setDesc("标题文字与图标 emoji 大小（px）");
-    addFontSizeControls(titleSizeSetting, {
-      value:
-        typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14,
-      onChange: (v) => update({ titleFontSize: v }),
-    });
-
     new Setting(el)
       .setName("图标")
       .setDesc("标题栏 emoji 图标")
@@ -148,7 +139,7 @@ const widget: WorkbenchWidget = {
           .onChange((v) => update({ icon: v.trim() }))
       );
 
-    // 正文：输入框独占一行（拉长），字号控件放下一行
+    // 正文：输入框独占一行（拉长）
     const bodySetting = new Setting(el)
       .setName("正文")
       .setDesc("支持多行文字，直接输入即可（空内容时卡片显示占位提示）");
@@ -160,13 +151,6 @@ const widget: WorkbenchWidget = {
       ta.inputEl.style.boxSizing = "border-box";
       ta.inputEl.style.fontSize = "13px";
       ta.onChange((v) => update({ text: v }));
-    });
-    const bodySizeSetting = new Setting(el)
-      .setName("正文字号")
-      .setDesc("正文字号大小（px）");
-    addFontSizeControls(bodySizeSetting, {
-      value: typeof inst.fontSize === "number" && inst.fontSize > 0 ? inst.fontSize : 14,
-      onChange: (v) => update({ fontSize: v }),
     });
 
     new Setting(el)

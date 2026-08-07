@@ -74,6 +74,8 @@ export class WidgetConfigDrawer extends Modal {
     this.renderAccentColor(contentEl, saveCb);
     // 通用外观：卡片风格（可切换不同卡片样式）
     this.renderCardStyle(contentEl, saveCb);
+    // 通用外观：字号分区（标题字号一组 + 正文字号一组，统一入口）
+    this.renderFontSizes(contentEl, saveCb);
 
     if (typeof this.widget.renderSettings === "function") {
       try {
@@ -116,7 +118,7 @@ export class WidgetConfigDrawer extends Modal {
           sel.style.boxShadow = "0 0 0 2px var(--interactive-accent)";
         }
       }
-      cfg[this.instanceId] = { ...inst, color: hex };
+      cfg[this.instanceId] = { ...(cfg[this.instanceId] || {}), color: hex };
       this.plugin.settings.widgetConfigs = cfg;
       this.plugin.saveSettings();
       saveCb();
@@ -182,7 +184,7 @@ export class WidgetConfigDrawer extends Modal {
     });
     dd.value = current;
     dd.addEventListener("change", () => {
-      cfg[this.instanceId] = { ...inst, cardStyle: dd.value };
+      cfg[this.instanceId] = { ...(cfg[this.instanceId] || {}), cardStyle: dd.value };
       this.plugin.settings.widgetConfigs = cfg;
       this.plugin.saveSettings();
       saveCb();
@@ -192,6 +194,45 @@ export class WidgetConfigDrawer extends Modal {
       attr: { style: "font-size:11px;color:var(--wb-sub);margin:4px 0 8px;" },
     });
     void desc;
+  }
+
+  /** 字号分区：标题字号一组 + 正文字号一组（所有组件统一入口，与外观/风格并列） */
+  private renderFontSizes(target: HTMLElement, saveCb: () => void) {
+    const cfg = this.plugin.settings.widgetConfigs || {};
+    const inst = (cfg[this.instanceId] || {}) as Record<string, unknown>;
+
+    target.createEl("h4", {
+      text: "🔤 字号",
+      attr: { style: "margin:10px 0 4px;font-size:13px;font-weight:700;" },
+    });
+
+    // 标题字号一组
+    const titleSetting = new Setting(target)
+      .setName("标题字号")
+      .setDesc("标题文字与图标 emoji 大小（px）");
+    addFontSizeControls(titleSetting, {
+      value: typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14,
+      onChange: (v) => {
+        cfg[this.instanceId] = { ...(cfg[this.instanceId] || {}), titleFontSize: v };
+        this.plugin.settings.widgetConfigs = cfg;
+        this.plugin.saveSettings();
+        saveCb();
+      },
+    });
+
+    // 正文字号一组
+    const bodySetting = new Setting(target)
+      .setName("正文字号")
+      .setDesc("正文文字大小（px），如列表条目 / 时间戳 / 标签等");
+    addFontSizeControls(bodySetting, {
+      value: typeof inst.bodyFontSize === "number" && inst.bodyFontSize > 0 ? inst.bodyFontSize : 13,
+      onChange: (v) => {
+        cfg[this.instanceId] = { ...(cfg[this.instanceId] || {}), bodyFontSize: v };
+        this.plugin.settings.widgetConfigs = cfg;
+        this.plugin.saveSettings();
+        saveCb();
+      },
+    });
   }
 
   onClose() {
@@ -304,8 +345,9 @@ export function addFontSizeControls(setting: Setting, opts: FontSizeControlsOpts
 }
 
 /**
- * 统一的标题配置区：标题输入框（独占一行拉长）+ 标题字号（下一行）+ 图标。
- * 所有组件共用同一套标题字号 UI，与图表统计/进度统计一致。
+ * 统一的标题配置区：标题输入框（独占一行拉长）+ 图标。
+ * 字号（标题字号/正文字号）统一由 WidgetConfigDrawer 的「🔤 字号」分区管理，
+ * 组件专属区不再重复渲染字号控件。
  */
 export function addTitleConfig(
   el: HTMLElement,
@@ -334,16 +376,6 @@ export function addTitleConfig(
     t.inputEl.style.boxSizing = "border-box";
     t.inputEl.style.minWidth = "200px";
   });
-  const sizeSetting = new Setting(el)
-    .setName("标题字号")
-    .setDesc("标题文字与图标 emoji 大小（px）");
-  addFontSizeControls(sizeSetting, {
-    value:
-      typeof cur().titleFontSize === "number" && (cur().titleFontSize as number) > 0
-        ? (cur().titleFontSize as number)
-        : defaults.titleFontSize,
-    onChange: (v) => update({ titleFontSize: v }),
-  });
   new Setting(el)
     .setName("图标")
     .setDesc("标题栏 emoji 图标")
@@ -367,4 +399,18 @@ export function applyTitleFontSize(bd: HTMLElement, titleFontSize: number): void
     ico.style.height = `${titleFontSize + 8}px`;
   }
   if (titleEl) titleEl.style.fontSize = `${titleFontSize}px`;
+}
+
+/** 渲染侧：把正文字号应用到面板内容区的正文元素（列表条目/时间戳/标签/徽章） */
+export function applyBodyFontSize(bd: HTMLElement, bodyFontSize: number): void {
+  const size = `${bodyFontSize}px`;
+  bd.querySelectorAll<HTMLElement>(".wb-name, .wb-meta, .wb-tag, .wb-badge").forEach((el) => {
+    el.style.fontSize = size;
+  });
+}
+
+/** 读取正文字号配置（缺省 13px） */
+export function bodyFontSizeOf(widgetConfig: Record<string, unknown> | undefined): number {
+  const cfg = widgetConfig || {};
+  return typeof cfg.bodyFontSize === "number" && cfg.bodyFontSize > 0 ? cfg.bodyFontSize : 13;
 }

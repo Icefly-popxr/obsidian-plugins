@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, addTitleConfig, WidgetConfigDrawer } from "./helpers";
+import { createPanel, emptyState, addTitleConfig, WidgetConfigDrawer, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 
 /**
  * 快捷入口组件（icon-grid）：图标入口矩阵

@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, addFontSizeControls, WidgetConfigDrawer } from "./helpers";
+import { createPanel, emptyState, addFontSizeControls, WidgetConfigDrawer, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 
 /**
  * 通用清单组件（分类通用组件第二类）
@@ -66,7 +66,8 @@ const widget: WorkbenchWidget = {
 
     // 标题栏字号：应用到标题文字 + 图标 emoji（跟随自适应）
     const titleFontSize = cfg.titleFontSize || 14;
-    const itemFontSize = cfg.itemFontSize || 13;
+    // 条目字号统一走 bodyFontSize（通用区「🔤 字号」分区管理）
+    const itemFontSize = bodyFontSizeOf(ctx.widgetConfig);
     const panel = bd.closest(".wb-panel");
     if (panel) {
       const ico = panel.querySelector<HTMLElement>(".wb-ico");
@@ -144,14 +145,6 @@ const widget: WorkbenchWidget = {
       t.inputEl.style.boxSizing = "border-box";
       t.inputEl.style.minWidth = "200px";
     });
-    const titleSizeSetting = new Setting(el)
-      .setName("标题字号")
-      .setDesc("标题文字与图标 emoji 大小（px）");
-    addFontSizeControls(titleSizeSetting, {
-      value:
-        typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14,
-      onChange: (v) => update({ titleFontSize: v }),
-    });
 
     new Setting(el)
       .setName("图标")
@@ -176,16 +169,6 @@ const widget: WorkbenchWidget = {
     el.createEl("h4", {
       text: "📋 清单条目",
       attr: { style: "margin:14px 0 6px;font-size:13px;font-weight:700;" },
-    });
-
-    // 条目字号：放在条目编辑区上方
-    const itemSizeSetting = new Setting(el)
-      .setName("条目字号")
-      .setDesc("清单条目文字大小（px）");
-    addFontSizeControls(itemSizeSetting, {
-      value:
-        typeof inst.itemFontSize === "number" && inst.itemFontSize > 0 ? inst.itemFontSize : 13,
-      onChange: (v) => update({ itemFontSize: v }),
     });
 
     const items = Array.isArray(inst.items) ? inst.items.map((x) => ({ ...x })) : [];

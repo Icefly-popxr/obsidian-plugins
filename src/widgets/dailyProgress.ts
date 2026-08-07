@@ -1,6 +1,6 @@
 import { Setting } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
-import { createPanel, emptyState, addFontSizeControls, WidgetConfigDrawer } from "./helpers";
+import { createPanel, emptyState, addFontSizeControls, WidgetConfigDrawer, applyBodyFontSize, bodyFontSizeOf } from "./helpers";
 import { buildHabitRecords, lastNDays } from "../services/habitService";
 
 /**
