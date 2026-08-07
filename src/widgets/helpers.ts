@@ -47,7 +47,11 @@ export class WidgetConfigDrawer extends Modal {
       }
     }
 
-    contentEl.createEl("h3", { text: `⚙️ ${this.widget.icon} ${this.widget.title} 配置` });
+    // 标题：优先用实例配置的 title（widgetConfigs[instId].title），缺省回退组件名
+    const instCfg = (this.plugin.settings.widgetConfigs || {})[this.instanceId] || {};
+    const instTitle = String(instCfg.title || "");
+    const drawerTitle = instTitle ? instTitle : this.widget.title;
+    contentEl.createEl("h3", { text: `⚙️ ${this.widget.icon} ${drawerTitle} 配置` });
 
     const saveCb = () => {
       this.plugin.saveSettings();
@@ -57,6 +61,9 @@ export class WidgetConfigDrawer extends Modal {
         if (typeof v.reload === "function") v.reload();
       });
     };
+
+    // 通用外观：主色（所有组件统一入口，与设置面板一致）
+    this.renderAccentColor(contentEl, saveCb);
 
     if (typeof this.widget.renderSettings === "function") {
       try {
@@ -68,6 +75,72 @@ export class WidgetConfigDrawer extends Modal {
     } else {
       contentEl.createEl("p", { text: "该组件没有可配置项" });
     }
+  }
+
+  /** 外观主色配置（与设置面板 renderCommonColorSetting 同一套逻辑） */
+  private renderAccentColor(target: HTMLElement, saveCb: () => void) {
+    const PRESET = [
+      "#8b5cf6", "#38bdf8", "#34d399", "#fbbf24", "#f59e0b",
+      "#f472b6", "#e11d2e", "#22d3ee", "#a78bfa", "#6ee7b7",
+    ];
+    const cfg = this.plugin.settings.widgetConfigs || {};
+    const inst = cfg[this.instanceId] || {};
+    const current = String(inst.color || "");
+
+    target.createEl("h4", {
+      text: "🎨 外观颜色",
+      attr: { style: "margin:10px 0 4px;font-size:13px;font-weight:700;" },
+    });
+    const swatchWrap = target.createDiv({
+      attr: { style: "display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px;" },
+    });
+    const paint = (hex: string) => {
+      swatchWrap.querySelectorAll<HTMLElement>("button").forEach((b) => {
+        b.style.borderColor = "var(--background-modifier-border)";
+        b.style.boxShadow = "none";
+      });
+      if (hex) {
+        const sel = swatchWrap.querySelector<HTMLElement>(`[data-c="${hex}"]`);
+        if (sel) {
+          sel.style.borderColor = "var(--interactive-accent)";
+          sel.style.boxShadow = "0 0 0 2px var(--interactive-accent)";
+        }
+      }
+      cfg[this.instanceId] = { ...inst, color: hex };
+      this.plugin.settings.widgetConfigs = cfg;
+      this.plugin.saveSettings();
+      saveCb();
+    };
+
+    PRESET.forEach((c) => {
+      const sw = swatchWrap.createEl("button", {
+        attr: {
+          "data-c": c,
+          style: `width:24px;height:24px;border-radius:6px;cursor:pointer;padding:0;border:2px solid var(--background-modifier-border);background:${c};`,
+        },
+      });
+      sw.addEventListener("click", () => paint(c));
+    });
+
+    // 自定义取色器 + 恢复默认
+    const row = target.createDiv({
+      attr: { style: "display:flex;align-items:center;gap:8px;margin-bottom:6px;" },
+    });
+    const colorInput = row.createEl("input", {
+      attr: { type: "color", value: current || this.widget.accent },
+    });
+    colorInput.style.width = "36px";
+    colorInput.style.height = "24px";
+    colorInput.style.padding = "0";
+    colorInput.style.border = "none";
+    colorInput.style.cursor = "pointer";
+    colorInput.addEventListener("input", () => paint(colorInput.value));
+    const reset = row.createEl("button", {
+      text: "恢复默认",
+      attr: { style: "font-size:12px;padding:4px 10px;border-radius:6px;cursor:pointer;background:var(--background-modifier-form-field);color:var(--text-normal);border:1px solid var(--background-modifier-border);" },
+    });
+    reset.addEventListener("click", () => paint(""));
+    saveCb();
   }
 
   onClose() {
