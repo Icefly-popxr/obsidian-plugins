@@ -559,7 +559,7 @@ body.theme-light .wb-kpi-mini .wb-num { animation: none; }
   --cursor-angle: 45deg;
   --edge-sensitivity: 30;
   --color-sensitivity: calc(var(--edge-sensitivity) + 20);
-  --glow-padding: 40px;
+  --glow-padding: 12px;
   --glow-color: rgb(40 80 80 / 100%);
   --cone-spread: 25;
   /* mesh 渐变：7 个 radial-gradient，紫/粉/蓝 */
@@ -575,6 +575,14 @@ body.theme-light .wb-kpi-mini .wb-num { animation: none; }
   position: relative;
   isolation: isolate;
   transform: translate3d(0, 0, 0.01px);
+  /* 允许光晕外扩显示（贴合卡片外框），内容区由 .wb-bd 单独裁剪 */
+  overflow: visible !important;
+}
+
+/* 内容区单独裁剪：光晕外扩时卡片内容不越界、不拦截相邻卡片点击 */
+.wb-glow .wb-bd {
+  overflow: hidden;
+  border-radius: inherit;
 }
 
 /* 三层光层共用定位 */
@@ -633,9 +641,9 @@ body.theme-light .wb-kpi-mini .wb-num { animation: none; }
   mix-blend-mode: soft-light;
 }
 
-/* 第 3 层：内部光晕（inset box-shadow，不越界，避免遮挡相邻卡片） */
+/* 第 3 层：外部光晕（多层 box-shadow，小外扩贴合外框，不遮挡相邻卡片） */
 .wb-glow > .edge-light {
-  inset: 0;
+  inset: calc(var(--glow-padding) * -1);
   z-index: 1;
   opacity: calc((var(--edge-proximity) - var(--edge-sensitivity)) / (100 - var(--edge-sensitivity)));
   mix-blend-mode: plus-lighter;
@@ -1112,19 +1120,22 @@ body.theme-light .wb-bubble {
 
 .wb-back:hover { background: rgba(56, 189, 248, .1); }
 
-/* 所有子页头部轨道胶囊：标题 + 返回工作台 同处一框，样式对齐首页顶栏 */
+/* 所有子页头部轨道胶囊：标题 + 返回工作台 同处一框，样式对齐首页顶栏，标题居中 */
 .wb-page-header {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
   padding: 8px 14px;
   border-radius: 10px;
   background: var(--wb-card);
   border: 1px solid var(--wb-border);
 }
-.wb-page-header .wb-page-title { margin: 0; }
+.wb-page-header .wb-page-title { margin: 0; flex: 1; justify-content: center; }
 .wb-page-header .wb-back {
+  position: absolute;
+  right: 14px;
   align-self: center;
   white-space: nowrap;
   border: none;

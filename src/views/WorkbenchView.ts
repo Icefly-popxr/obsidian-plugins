@@ -1,6 +1,6 @@
 import { ItemView, WorkspaceLeaf, Notice, Modal, setIcon, App, MarkdownRenderer } from "obsidian";
 import type KnowledgeWorkbenchPlugin from "../main";
-import { DEFAULT_HERO_ACTIONS } from "../main";
+import { DEFAULT_HERO_ACTIONS, openHeroMediaPicker } from "../main";
 import {
   computeStats,
   recentFiles,
@@ -276,46 +276,40 @@ export class WorkbenchView extends ItemView {
     const hero = wrap.createDiv({ cls: "wb-hero" });
     this.bgLayer = hero;
 
-    // 海贼王全员海报（支持自定义头图）
-    const heroSrc = this.plugin.settings.heroImageDataUrl || crewBackdropDataUri();
-    hero.createEl("img", {
-      cls: "wb-hero-crew",
-      attr: { src: heroSrc, alt: "" },
-    });
+    // 自定义头图媒体（支持 image / GIF 动图 / video）
+    const media = this.plugin.settings.heroMedia;
+    const heroSrc = media?.src || crewBackdropDataUri();
+    if (media?.kind === "video") {
+      const v = hero.createEl("video", {
+        cls: "wb-hero-crew",
+        attr: { src: heroSrc, autoplay: "", loop: "", muted: "", playsinline: "" },
+      }) as HTMLVideoElement;
+      v.muted = true; // 确保自动播放静音（部分浏览器仅设属性不生效）
+    } else {
+      hero.createEl("img", {
+        cls: "wb-hero-crew",
+        attr: { src: heroSrc, alt: "" },
+      });
+    }
 
-    // 悬浮上传按钮（右上角，hover 显示）
+    // 悬浮上传按钮（右上角，hover 显示）：支持图片 / GIF 动图 / 视频
     const uploadBtn = hero.createDiv({ cls: "wb-hero-upload" });
     uploadBtn.innerHTML = "🖼️ 更换头图";
+    uploadBtn.title = "支持图片、GIF 动图、视频（≤25MB）";
     uploadBtn.addEventListener("click", async () => {
-      const input = document.createElement("input");
-      input.type = "file";
-      input.accept = "image/*";
-      input.onchange = async () => {
-        const file = input.files?.[0];
-        if (!file) return;
-        try {
-          const dataUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          });
-          this.plugin.settings.heroImageDataUrl = dataUrl;
-          await this.plugin.saveSettings();
-          new Notice("✅ 头图已更新");
-          this.reload();
-        } catch (e) {
-          console.error(e);
-          new Notice("❌ 读取图片失败");
-        }
-      };
-      input.click();
+      const media = await openHeroMediaPicker();
+      if (!media) return;
+      this.plugin.settings.heroMedia = media;
+      await this.plugin.saveSettings();
+      new Notice(media.kind === "video" ? "✅ 头图视频已更新" : "✅ 头图已更新");
+      this.reload();
     });
 
-    // 熔岩动态容器（WebGL，叠加在全员图上）
-    const moltenHost = hero.createDiv({ cls: "wb-hero-molten" });
-    this.molten = new MoltenBackground();
-    this.molten.mount(moltenHost, {
+    // 熔岩动态容器（WebGL，叠加在内置全员图上）；自定义头图/视频时不叠加，避免遮挡
+    if (!media) {
+      const moltenHost = hero.createDiv({ cls: "wb-hero-molten" });
+      this.molten = new MoltenBackground();
+      this.molten.mount(moltenHost, {
       color1: "#8b5cf6",   // 紫
       color2: "#e11d2e",   // 路飞红
       color3: "#fbbf24",   // 宝藏金
@@ -334,7 +328,8 @@ export class WorkbenchView extends ItemView {
       mouseInteraction: true,
       mouseStrength: 0.3,
       opacity: 1.0,
-    });
+      });
+    }
 
     // 右下角固定功能按钮（参考图胶囊样式，按钮显隐/布局可配置）
     const ha = { ...DEFAULT_HERO_ACTIONS, ...(this.plugin.settings.heroActions || {}) };
@@ -552,8 +547,8 @@ export class WorkbenchView extends ItemView {
         host.querySelectorAll<HTMLElement>(".wb-panel, .wb-kpi-card, .wb-chart").forEach((el) => {
           const base = el.dataset.id || (el.classList.contains("wb-kpi-card") ? "stat" : "card");
           el.dataset.id = prefix + base + (suffix ? `-${suffix}` : "");
-          // 光圈效果：按实例配置（glow !== false 默认开启；关闭则不加 wb-glow）
-          if (instCfg.glow !== false) {
+          // 光圈效果：全局统一开关（所有组件一致，避免按实例导致互相影响）
+          if (this.plugin.settings.showGlow) {
             el.classList.add("wb-glow");
             this.attachGlow(el);
           }

@@ -74,8 +74,6 @@ export class WidgetConfigDrawer extends Modal {
     this.renderAccentColor(contentEl, saveCb);
     // 通用外观：卡片风格（可切换不同卡片样式）
     this.renderCardStyle(contentEl, saveCb);
-    // 通用外观：光圈效果开关（光标驱动的边框光晕，可独立关闭）
-    this.renderGlowToggle(contentEl, saveCb);
 
     if (typeof this.widget.renderSettings === "function") {
       try {
@@ -194,55 +192,6 @@ export class WidgetConfigDrawer extends Modal {
       attr: { style: "font-size:11px;color:var(--wb-sub);margin:4px 0 8px;" },
     });
     void desc;
-  }
-
-  /** 光圈效果开关（光标驱动的边框光晕；默认开启，可独立关闭） */
-  private renderGlowToggle(target: HTMLElement, saveCb: () => void) {
-    const cfg = this.plugin.settings.widgetConfigs || {};
-    const inst = cfg[this.instanceId] || {};
-    const enabled = inst.glow !== false;
-
-    target.createEl("h4", {
-      text: "💡 光圈效果",
-      attr: { style: "margin:10px 0 4px;font-size:13px;font-weight:700;" },
-    });
-    const row = target.createDiv({
-      attr: { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;" },
-    });
-    row.createSpan({ text: "启用（光标接近时卡片边缘发光）" });
-    const sw = row.createEl("button", {
-      attr: {
-        style: "position:relative;width:34px;height:18px;border-radius:999px;border:none;cursor:pointer;transition:background .2s;",
-      },
-    });
-    const knob = sw.createEl("span", {
-      attr: {
-        style: "position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s;",
-      },
-    });
-    void knob;
-
-    // 同步开关视觉状态（背景色 + knob 位置）
-    const syncVisual = (on: boolean) => {
-      sw.style.background = on
-        ? "var(--interactive-accent)"
-        : "var(--background-modifier-border)";
-      knob.style.left = on ? "16px" : "2px";
-    };
-    syncVisual(enabled);
-
-    sw.addEventListener("click", () => {
-      const next = !((cfg[this.instanceId] || {}).glow !== false); // 取反：关 → 开，开 → 关
-      cfg[this.instanceId] = { ...(cfg[this.instanceId] || {}), glow: next };
-      this.plugin.settings.widgetConfigs = cfg;
-      syncVisual(next);
-      this.plugin.saveSettings();
-      saveCb();
-    });
-    target.createEl("p", {
-      text: "关闭后卡片不再有光标光圈效果（风格/主色不受影响）",
-      attr: { style: "font-size:11px;color:var(--wb-sub);margin:0 0 8px;" },
-    });
   }
 
   onClose() {

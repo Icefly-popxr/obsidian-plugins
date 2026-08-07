@@ -10,6 +10,8 @@ interface WorkbenchSettings {
   knowledgeBasePath: string;
   /** 是否显示背景动效（气泡/海浪/罗盘） */
   showEffects: boolean;
+  /** 是否开启卡片光圈效果（全局统一开关，所有组件一致） */
+  showGlow: boolean;
   /** 复习字段名（KC 卡 frontmatter 中的复习日期字段） */
   reviewField: string;
   /** 打卡存储：英语/播客写入的笔记目录 */
@@ -28,8 +30,10 @@ interface WorkbenchSettings {
   podcastProgress?: Record<string, { pos: number; updatedAt: string }>;
   /** 播客收听统计：date(YYYY-MM-DD) -> {audioPath: count}（30 天热力图用） */
   podcastStat?: Record<string, Record<string, number>>;
-  /** 自定义 hero 头图（base64 data URL，空 = 默认内置图） */
+  /** 自定义 hero 头图（base64 data URL，空 = 默认内置图，已迁移至 heroMedia） */
   heroImageDataUrl: string;
+  /** 自定义 hero 头图媒体：{ kind: "image" | "video", src: dataURL }；null = 默认内置图（支持 GIF 动图与视频） */
+  heroMedia: { kind: "image" | "video"; src: string } | null;
   /** 仪表盘布局：key = 元素 data-id，value = {x, y, w, h, collapsed?} */
   dashboardLayout: Record<string, { x: number; y: number; w: number; h: number; collapsed?: boolean }>;
   /** 首页已启用的组件实例列表（可含 #N 后缀表示同一组件的多个实例） */
@@ -71,11 +75,13 @@ export const DEFAULT_HERO_ACTIONS = {
 const DEFAULT_SETTINGS: WorkbenchSettings = {
   knowledgeBasePath: "",
   showEffects: true,
+  showGlow: true,
   reviewField: "review",
   habitNoteFolder: "01 - Projects 项目/打卡",
   habits: defaultHabits(),
   englishRecords: [],
   heroImageDataUrl: "",
+  heroMedia: null,
   dashboardLayout: {},
   activeWidgets: WIDGETS.map((w) => w.id),
   maskedHeadingConfig: {},
@@ -132,6 +138,97 @@ function fileToDataUrl(file: File): Promise<string> {
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * 打开系统文件选择框选择头图（图片 / GIF / 视频）。
+ * 双保险：优先 Electron dialog；不可用时回退到挂载 body 的 file input（视觉隐藏）。
+ * 设置面板与前台头图按钮共用。返回 null = 用户取消或失败。
+ */
+export async function openHeroMediaPicker(): Promise<{ kind: "image" | "video"; src: string } | null> {
+  // ── 方式 1：Electron dialog（Obsidian 基于 Electron） ──
+  try {
+    // @ts-ignore Obsidian 渲染进程提供 window.require
+    const req = window.require;
+    if (typeof req === "function") {
+      const { dialog } = req("electron");
+      const res = await dialog.showOpenDialog({
+        title: "选择头图（图片 / GIF / 视频）",
+        properties: ["openFile"],
+        filters: [
+          { name: "图片", extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"] },
+          { name: "视频", extensions: ["mp4", "webm", "mov", "m4v", "ogg"] },
+        ],
+      });
+      if (res.canceled || !res.filePaths?.length) return null;
+      const path = res.filePaths[0];
+      const fs = req("fs");
+      const stat = fs.statSync(path);
+      if (stat.size > 25 * 1024 * 1024) {
+        new Notice("❌ 文件过大（>25MB），请压缩后再上传");
+        return null;
+      }
+      const ext = (path.split(".").pop() || "").toLowerCase();
+      const isVideo = ["mp4", "webm", "mov", "m4v", "ogg"].includes(ext);
+      const VIDEO_MIME: Record<string, string> = { mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime", m4v: "video/x-m4v", ogg: "video/ogg" };
+      const IMAGE_MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", bmp: "image/bmp" };
+      const mime = (isVideo ? VIDEO_MIME : IMAGE_MIME)[ext] || (isVideo ? "video/mp4" : "image/png");
+      const base64 = fs.readFileSync(path).toString("base64");
+      return { kind: isVideo ? "video" : "image", src: `data:${mime};base64,${base64}` };
+    }
+  } catch (e) {
+    console.error("[workbench] Electron dialog 不可用，回退 file input", e);
+  }
+
+  // ── 方式 2：挂载 body 的 file input（视觉隐藏而非 display:none，确保 click 生效） ──
+  return new Promise((resolve) => {
+    try {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*,video/*";
+      // 视觉隐藏：fixed 移出屏幕，避免部分环境对 display:none 的 input 吞掉 click
+      input.style.position = "fixed";
+      input.style.top = "-9999px";
+      input.style.left = "-9999px";
+      input.style.width = "1px";
+      input.style.height = "1px";
+      input.style.opacity = "0";
+      document.body.appendChild(input);
+      const cleanup = () => {
+        if (input.parentElement) input.parentElement.removeChild(input);
+      };
+      input.onchange = () => {
+        const file = input.files?.[0];
+        cleanup();
+        if (!file) {
+          resolve(null);
+          return;
+        }
+        if (file.size > 25 * 1024 * 1024) {
+          new Notice("❌ 文件过大（>25MB），请压缩后再上传");
+          resolve(null);
+          return;
+        }
+        const isVideo = file.type.startsWith("video/");
+        fileToDataUrl(file)
+          .then((src) => resolve({ kind: isVideo ? "video" : "image", src }))
+          .catch((err) => {
+            console.error(err);
+            new Notice("❌ 读取文件失败");
+            resolve(null);
+          });
+      };
+      input.oncancel = () => {
+        cleanup();
+        resolve(null);
+      };
+      input.click();
+    } catch (e) {
+      console.error(e);
+      new Notice("❌ 打开文件选择框失败");
+      resolve(null);
+    }
   });
 }
 
@@ -192,6 +289,10 @@ export default class KnowledgeWorkbenchPlugin extends Plugin {
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
     migrateAllWidgetIds(this.settings);
+    // 兼容旧版：heroImageDataUrl → heroMedia（image）
+    if (this.settings.heroImageDataUrl && !this.settings.heroMedia) {
+      this.settings.heroMedia = { kind: "image", src: this.settings.heroImageDataUrl };
+    }
   }
 
   async saveSettings() {
@@ -240,6 +341,19 @@ class WorkbenchSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
+      .setName("光圈效果")
+      .setDesc("卡片边缘光标发光（全局统一开关，所有组件一致，避免互相影响）")
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showGlow)
+          .onChange(async (value) => {
+            this.plugin.settings.showGlow = value;
+            await this.plugin.saveSettings();
+            new Notice("光圈设置已更新，重新打开工作台生效");
+          })
+      );
+
+    new Setting(containerEl)
       .setName("复习字段")
       .setDesc("KC 卡 frontmatter 中的复习日期字段名")
       .addText((text) =>
@@ -265,30 +379,37 @@ class WorkbenchSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Hero 头图")
-      .setDesc("上传自定义头图（PNG/JPG/GIF），留空则使用默认内置图。支持任意尺寸，会自动适配。")
+      .setDesc("上传自定义头图（PNG/JPG/GIF/视频），留空则使用默认内置图。支持任意尺寸，会自动适配。")
       .addButton((btn) =>
         btn
-          .setButtonText("选择图片")
+          .setButtonText("选择图片 / 视频")
           .setClass("mod-cta")
           .onClick(async () => {
-            const input = document.createElement("input");
-            input.type = "file";
-            input.accept = "image/*";
-            input.onchange = async () => {
-              const file = input.files?.[0];
-              if (!file) return;
-              try {
-                const dataUrl = await fileToDataUrl(file);
-                this.plugin.settings.heroImageDataUrl = dataUrl;
-                await this.plugin.saveSettings();
-                new Notice("✅ 头图已更新，重新打开工作台生效");
-                this.display();
-              } catch (e) {
-                console.error(e);
-                new Notice("❌ 读取图片失败");
-              }
-            };
-            input.click();
+            const media = await openHeroMediaPicker();
+            if (!media) return;
+            this.plugin.settings.heroMedia = media;
+            await this.plugin.saveSettings();
+            new Notice(
+              media.kind === "video"
+                ? "✅ 头图视频已更新，重新打开工作台生效"
+                : "✅ 头图已更新，重新打开工作台生效"
+            );
+            this.display();
+          })
+      );
+    // 清除自定义头图，恢复默认内置图
+    new Setting(containerEl)
+      .setName("恢复默认头图")
+      .setDesc("清除自定义图片 / 视频，回到内置海贼全员图。")
+      .addButton((btn) =>
+        btn
+          .setButtonText("恢复默认")
+          .onClick(async () => {
+            this.plugin.settings.heroMedia = null;
+            this.plugin.settings.heroImageDataUrl = "";
+            await this.plugin.saveSettings();
+            new Notice("✅ 已恢复默认头图");
+            this.display();
           })
       );
 
@@ -326,12 +447,25 @@ class WorkbenchSettingTab extends PluginSettingTab {
           .onChange((v) => setHa({ layout: v as "row" | "col" }))
       );
 
-    // 显示当前头图预览（如果有自定义图）
-    if (this.plugin.settings.heroImageDataUrl) {
-      containerEl.createEl("div", { cls: "wb-hero-preview-wrap" }).createEl("img", {
-        attr: { src: this.plugin.settings.heroImageDataUrl },
-        cls: "wb-hero-preview",
-      });
+    // 显示当前头图预览（如果有自定义图 / 视频）
+    if (this.plugin.settings.heroMedia) {
+      const wrap = containerEl.createEl("div", { cls: "wb-hero-preview-wrap" });
+      if (this.plugin.settings.heroMedia.kind === "video") {
+        wrap.createEl("video", {
+          attr: {
+            src: this.plugin.settings.heroMedia.src,
+            controls: "",
+            muted: "",
+            loop: "",
+          },
+          cls: "wb-hero-preview",
+        });
+      } else {
+        wrap.createEl("img", {
+          attr: { src: this.plugin.settings.heroMedia.src },
+          cls: "wb-hero-preview",
+        });
+      }
     }
 
     // ── 数据备份（导出/导入 JSON） ──
