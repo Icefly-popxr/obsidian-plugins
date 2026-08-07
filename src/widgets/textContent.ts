@@ -1,4 +1,4 @@
-import { Setting } from "obsidian";
+import { Setting, TextComponent } from "obsidian";
 import type { WidgetCtx, WorkbenchWidget } from "./types";
 import { createPanel, emptyState } from "./helpers";
 
@@ -85,8 +85,10 @@ const widget: WorkbenchWidget = {
     const cfgMap = plugin.settings.widgetConfigs || {};
     const inst = (cfgMap[instanceId] || {}) as TextContentCfg;
 
+    // 基于当前已存配置合并（不要用初始快照 inst，否则先填的字段会被后填的覆盖）
     const update = (patch: Partial<TextContentCfg>) => {
-      cfgMap[instanceId] = { ...inst, ...patch };
+      const current = (cfgMap[instanceId] || {}) as TextContentCfg;
+      cfgMap[instanceId] = { ...current, ...patch };
       plugin.settings.widgetConfigs = cfgMap;
       save();
     };
@@ -123,16 +125,37 @@ const widget: WorkbenchWidget = {
         ta.onChange((v) => update({ text: v }));
       });
 
-    new Setting(el)
-      .setName("字号")
-      .setDesc("正文字号（px）")
-      .addSlider((sl) =>
-        sl
-          .setLimits(10, 32, 1)
-          .setValue(typeof inst.fontSize === "number" && inst.fontSize > 0 ? inst.fontSize : 14)
-          .setDynamicTooltip()
-          .onChange((v) => update({ fontSize: v }))
-      );
+    // 字号：− / 数值输入 / ＋ 按钮（范围 10-32）
+    let size = typeof inst.fontSize === "number" && inst.fontSize > 0 ? inst.fontSize : 14;
+    let sizeText: TextComponent;
+    const sizeSetting = new Setting(el).setName("字号").setDesc("正文字号（px）");
+    sizeSetting.addText((t) => {
+      sizeText = t;
+      t.setValue(String(size));
+      t.inputEl.style.width = "48px";
+      t.inputEl.style.textAlign = "center";
+      t.onChange((v) => {
+        const n = parseInt(v, 10);
+        if (!isNaN(n) && n >= 10 && n <= 32) {
+          size = n;
+          update({ fontSize: n });
+        }
+      });
+    });
+    sizeSetting.addButton((b) =>
+      b.setButtonText("−").onClick(() => {
+        size = Math.max(10, size - 1);
+        sizeText.setValue(String(size));
+        update({ fontSize: size });
+      })
+    );
+    sizeSetting.addButton((b) =>
+      b.setButtonText("＋").onClick(() => {
+        size = Math.min(32, size + 1);
+        sizeText.setValue(String(size));
+        update({ fontSize: size });
+      })
+    );
 
     new Setting(el)
       .setName("对齐")
