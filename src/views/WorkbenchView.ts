@@ -220,13 +220,7 @@ export class WorkbenchView extends ItemView {
 
     if (this.page === "home") {
       this.renderHome(main);
-      // 首页自由布局：glow + 位置初始化 + 视口揭示（仅画布内卡片）
-      main.querySelectorAll<HTMLElement>(
-        ".wb-widgets .wb-panel, .wb-widgets .wb-kpi-card, .wb-widgets .wb-chart"
-      ).forEach((el) => {
-        el.classList.add("wb-glow");
-        this.attachGlow(el);
-      });
+      // 首页自由布局：位置初始化 + 视口揭示（光圈效果按实例配置在 renderWidgetCanvas 内处理）
       this.layoutMgr.init(main);
       this.attachRevealObserver(main);
     } else {
@@ -234,12 +228,6 @@ export class WorkbenchView extends ItemView {
       // 子页面组件画布：渲染该页组件并启用自由布局（选择器限定画布内，固定面板不受影响）
       const canvas = this.renderWidgetCanvas(main, this.page);
       if (canvas) {
-        main.querySelectorAll<HTMLElement>(
-          ".wb-widgets .wb-panel, .wb-widgets .wb-kpi-card, .wb-widgets .wb-chart"
-        ).forEach((el) => {
-          el.classList.add("wb-glow");
-          this.attachGlow(el);
-        });
         this.layoutMgr.init(main);
         this.attachRevealObserver(main);
       }
@@ -564,6 +552,11 @@ export class WorkbenchView extends ItemView {
         host.querySelectorAll<HTMLElement>(".wb-panel, .wb-kpi-card, .wb-chart").forEach((el) => {
           const base = el.dataset.id || (el.classList.contains("wb-kpi-card") ? "stat" : "card");
           el.dataset.id = prefix + base + (suffix ? `-${suffix}` : "");
+          // 光圈效果：按实例配置（glow !== false 默认开启；关闭则不加 wb-glow）
+          if (instCfg.glow !== false) {
+            el.classList.add("wb-glow");
+            this.attachGlow(el);
+          }
         });
       } catch (e) {
         console.error(`[workbench] widget ${w.id} 渲染失败`, e);
