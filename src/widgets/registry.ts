@@ -64,7 +64,7 @@ export const CATEGORIES: WidgetCategory[] = [
   { id: "web", icon: "🌐", name: "网络" },
   { id: "media", icon: "🎬", name: "媒体" },
   { id: "decor", icon: "🎨", name: "装饰" },
-  { id: "universal", icon: "🧩", name: "通用" },
+  { id: "universal", icon: "🧭", name: "导航" },
 ];
 
 /** 获取组件所属分类（未匹配归入 other） */

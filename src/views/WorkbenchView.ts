@@ -1,5 +1,6 @@
 import { ItemView, WorkspaceLeaf, Notice, Modal, setIcon, App, MarkdownRenderer } from "obsidian";
 import type KnowledgeWorkbenchPlugin from "../main";
+import { DEFAULT_HERO_ACTIONS } from "../main";
 import {
   computeStats,
   recentFiles,
@@ -245,23 +246,11 @@ export class WorkbenchView extends ItemView {
     }
   }
 
-  /** 侧边栏菜单：顶部收起按钮 + 各页（Emoji+文字），点击切换当前页 */
+  /** 侧边栏菜单：各页（Emoji+文字）+ 底部收起按钮，点击切换当前页 */
   private buildSidebar(wrap: HTMLElement) {
     const sb = wrap.createDiv({ cls: "wb-sidebar" });
     const collapsed = !!this.plugin.settings.sidebarCollapsed;
     if (collapsed) sb.addClass("collapsed");
-
-    // 收起/展开按钮（置顶）
-    const toggle = sb.createDiv({ cls: "wb-side-toggle" });
-    const toggleIcon = toggle.createSpan({ cls: "wb-side-icon", text: collapsed ? "▶" : "◀" });
-    const toggleLabel = toggle.createSpan({ cls: "wb-side-label", text: collapsed ? "" : "收起" });
-    toggle.addEventListener("click", () => {
-      const nowCollapsed = sb.classList.toggle("collapsed");
-      this.plugin.settings.sidebarCollapsed = nowCollapsed;
-      this.plugin.saveSettings();
-      toggleIcon.setText(nowCollapsed ? "▶" : "◀");
-      toggleLabel.setText(nowCollapsed ? "" : "收起");
-    });
 
     const items: [string, string, Page][] = [
       ["🧭", "首页概览", "home"],
@@ -280,6 +269,18 @@ export class WorkbenchView extends ItemView {
       item.createSpan({ cls: "wb-side-label", text: label });
       item.addEventListener("click", () => this.goto(page));
     }
+
+    // 收起/展开按钮（置底，系统配置之后）
+    const toggle = sb.createDiv({ cls: "wb-side-toggle" });
+    const toggleIcon = toggle.createSpan({ cls: "wb-side-icon", text: collapsed ? "▶" : "◀" });
+    const toggleLabel = toggle.createSpan({ cls: "wb-side-label", text: collapsed ? "" : "收起" });
+    toggle.addEventListener("click", () => {
+      const nowCollapsed = sb.classList.toggle("collapsed");
+      this.plugin.settings.sidebarCollapsed = nowCollapsed;
+      this.plugin.saveSettings();
+      toggleIcon.setText(nowCollapsed ? "▶" : "◀");
+      toggleLabel.setText(nowCollapsed ? "" : "收起");
+    });
   }
 
   /** 顶部 hero 头图：海贼全员图 + MoltenMetal 熔岩动态（网页头图/轮播风格） */
@@ -347,64 +348,75 @@ export class WorkbenchView extends ItemView {
       opacity: 1.0,
     });
 
-    // 右下角固定功能按钮（参考图胶囊样式）
-    const actions = hero.createDiv({ cls: "wb-hero-actions" });
+    // 右下角固定功能按钮（参考图胶囊样式，按钮显隐/布局可配置）
+    const ha = { ...DEFAULT_HERO_ACTIONS, ...(this.plugin.settings.heroActions || {}) };
+    const actions = hero.createDiv({
+      cls: "wb-hero-actions" + (ha.layout === "col" ? " wb-hero-actions-col" : ""),
+    });
     const makeAction = (label: string, onClick: () => void) => {
       const btn = actions.createSpan({ cls: "wb-hero-action", text: label });
       btn.addEventListener("click", onClick);
     };
 
     // 搜索：打开 Obsidian 全局搜索
-    makeAction("🔍 搜索", () => {
-      // @ts-ignore
-      this.app.commands.executeCommandById("global-search:open");
-    });
+    if (ha.search) {
+      makeAction("🔍 搜索", () => {
+        // @ts-ignore
+        this.app.commands.executeCommandById("global-search:open");
+      });
+    }
     // 新建：添加组件（打开 AddWidgetModal）
-    makeAction("➕ 新建", () => {
-      new AddWidgetModal(this.app, (widgetId) => this.addWidgetInstance(widgetId)).open();
-    });
-    // 刷新：强制重新扫描（跳过缓存），重渲染工作台视图
-    makeAction("🔄 刷新", () => {
-      this.reload(true);
-    });
-    // 设置：直接弹出知识库工作台后台面板（与系统配置页"打开工作台 Dashboard"一致）
-    makeAction("⚙️ 设置", () => {
-      this.openDashboardSettings();
-    });
-    // 皮肤：太阳/月亮切换深色/浅色主题（双触发：配置持久化 + 命令真正刷新外观）
-    const themeBtn = actions.createSpan({ cls: "wb-hero-action wb-theme-toggle" });
-    const moon = themeBtn.createSpan({ cls: "wb-theme-moon", text: "🌙" });
-    const sun = themeBtn.createSpan({ cls: "wb-theme-sun", text: "☀️" });
-
-    const applyThemeIconState = () => {
-      const isDark = document.body.classList.contains("theme-dark");
-      moon.classList.toggle("active", isDark);
-      sun.classList.toggle("active", !isDark);
-    };
-    applyThemeIconState();
-
-    themeBtn.addEventListener("click", () => {
-      const isDark = document.body.classList.contains("theme-dark");
-      const goDark = !isDark; // 目标明暗：当前深则切浅，否则切深
-      const base = goDark ? "obsidian" : "mink";
-      // 1) 持久化 Obsidian 基础明暗配置
-      try {
-        // @ts-ignore baseTheme 是 Obsidian 内置明暗设置项
-        this.app.vault.setConfig("baseTheme", base);
-      } catch (e) { /* 某些版本不容忍未知 key，忽略 */ }
-      // 2) 触发 Obsidian 真正刷新外观（命令方式最确定生效，会让 --background-primary 等原生变量重算 → 工作台自动跟随）
-      try {
-        // @ts-ignore 运行时存在 commands，但 obsidian 类型未声明
-        this.app.commands.executeCommandById(goDark ? "theme:use-dark" : "theme:use-light");
-      } catch (e) { /* 忽略 */ }
-      // 3) 兜底：同步 body 明暗类（驱动任何 body.theme-* 自定义样式）
-      document.body.classList.toggle("theme-dark", goDark);
-      document.body.classList.toggle("theme-light", !goDark);
+    if (ha.create) {
+      makeAction("➕ 新建", () => {
+        new AddWidgetModal(this.app, (widgetId) => this.addWidgetInstance(widgetId)).open();
+      });
+    }
+    // 刷新：强制重新扫描（跳过缓存）
+    if (ha.refresh) {
+      makeAction("🔄 刷新", () => {
+        this.reload(true);
+      });
+    }
+    // 设置：打开工作台设置面板
+    if (ha.settings) {
+      makeAction("⚙️ 设置", () => {
+        this.openDashboardSettings();
+      });
+    }
+    // 主题切换
+    if (ha.theme) {
+      const themeBtn = actions.createSpan({ cls: "wb-hero-action wb-theme-toggle" });
+      const moon = themeBtn.createSpan({ cls: "wb-theme-moon", text: "🌙" });
+      const sun = themeBtn.createSpan({ cls: "wb-theme-sun", text: "☀️" });
+      const applyThemeIconState = () => {
+        const isDark = document.body.classList.contains("theme-dark");
+        moon.classList.toggle("active", isDark);
+        sun.classList.toggle("active", !isDark);
+      };
       applyThemeIconState();
-      new Notice(goDark ? "🌙 已切换到深色主题" : "☀️ 已切换到浅色主题");
-    });
+      themeBtn.addEventListener("click", () => this.toggleTheme());
+    }
+  }
 
-    applyThemeIconState();
+  /** 切换明暗主题（功能胶囊的「🌙/☀️」按钮调用） */
+  private toggleTheme() {
+    const isDark = document.body.classList.contains("theme-dark");
+    const goDark = !isDark; // 目标明暗：当前深则切浅，否则切深
+    const base = goDark ? "obsidian" : "mink";
+    // 1) 持久化 Obsidian 基础明暗配置
+    try {
+      // @ts-ignore baseTheme 是 Obsidian 内置明暗设置项
+      this.app.vault.setConfig("baseTheme", base);
+    } catch (e) { /* 某些版本不容忍未知 key，忽略 */ }
+    // 2) 触发 Obsidian 真正刷新外观（命令方式最确定生效，会让 --background-primary 等原生变量重算 → 工作台自动跟随）
+    try {
+      // @ts-ignore 运行时存在 commands，但 obsidian 类型未声明
+      this.app.commands.executeCommandById(goDark ? "theme:use-dark" : "theme:use-light");
+    } catch (e) { /* 忽略 */ }
+    // 3) 兜底：同步 body 明暗类（驱动任何 body.theme-* 自定义样式）
+    document.body.classList.toggle("theme-dark", goDark);
+    document.body.classList.toggle("theme-light", !goDark);
+    new Notice(goDark ? "🌙 已切换到深色主题" : "☀️ 已切换到浅色主题");
   }
 
   /** Border Glow 光标驱动：计算边缘接近度与光标角度（React Bits 移植） */

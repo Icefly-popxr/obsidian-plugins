@@ -3,7 +3,7 @@ import type { WidgetCtx, WorkbenchWidget } from "./types";
 import { createPanel, emptyState, addTitleConfig, WidgetConfigDrawer } from "./helpers";
 
 /**
- * 图标内容组件（icon-grid）：快捷入口矩阵
+ * 快捷入口组件（icon-grid）：图标入口矩阵
  *  - 每条目 = {图标 emoji, 文字, 动作}
  *  - 动作：page:页面（跳转工作台子页）/ file:路径（打开笔记）/ url:http（打开网页）
  *  - 配置右上角 ⚙️ 打开右侧抽屉，支持多实例（#N 后缀）
@@ -60,7 +60,7 @@ function runAction(ctx: WidgetCtx, action: string) {
 
 const widget: WorkbenchWidget = {
   id: "icon-grid",
-  title: "图标内容",
+  title: "快捷入口",
   icon: "🧭",
   accent: DEFAULT_ACCENT,
   category: "universal",

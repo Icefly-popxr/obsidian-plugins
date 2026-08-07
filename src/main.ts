@@ -47,7 +47,26 @@ interface WorkbenchSettings {
   sidebarCollapsed?: boolean;
   /** 主题模式：light / dark / auto（跟随系统） */
   themeMode?: string;
+  /** hero 功能胶囊：按钮显隐 + 布局（方案 C 配置） */
+  heroActions?: {
+    search?: boolean;
+    create?: boolean;
+    refresh?: boolean;
+    settings?: boolean;
+    theme?: boolean;
+    /** row = 横向（默认），col = 纵向 */
+    layout?: "row" | "col";
+  };
 }
+
+export const DEFAULT_HERO_ACTIONS = {
+  search: true,
+  create: true,
+  refresh: true,
+  settings: true,
+  theme: true,
+  layout: "row" as "row" | "col",
+};
 
 const DEFAULT_SETTINGS: WorkbenchSettings = {
   knowledgeBasePath: "",
@@ -271,6 +290,40 @@ class WorkbenchSettingTab extends PluginSettingTab {
             };
             input.click();
           })
+      );
+
+    // ── 功能胶囊（hero 右下角）配置 ──
+    containerEl.createEl("h3", { text: "🎛️ 功能胶囊" });
+    containerEl.createEl("p", {
+      text: "hero 右下角操作按钮的显隐与布局。",
+      cls: "setting-item-description",
+    });
+    const ha = { ...DEFAULT_HERO_ACTIONS, ...(this.plugin.settings.heroActions || {}) };
+    const setHa = (patch: Partial<typeof DEFAULT_HERO_ACTIONS>) => {
+      this.plugin.settings.heroActions = { ...ha, ...patch };
+      this.plugin.saveSettings();
+      this.display();
+    };
+    const haItems: { key: keyof typeof DEFAULT_HERO_ACTIONS; label: string }[] = [
+      { key: "search", label: "🔍 搜索" },
+      { key: "create", label: "➕ 新建" },
+      { key: "refresh", label: "🔄 刷新" },
+      { key: "settings", label: "⚙️ 设置" },
+      { key: "theme", label: "🌙/☀️ 主题" },
+    ];
+    haItems.forEach((it) => {
+      new Setting(containerEl).setName(it.label).addToggle((tg) =>
+        tg.setValue(ha[it.key] !== false).onChange((v) => setHa({ [it.key]: v } as Partial<typeof DEFAULT_HERO_ACTIONS>))
+      );
+    });
+    new Setting(containerEl)
+      .setName("布局")
+      .addDropdown((dd) =>
+        dd
+          .addOption("row", "横向")
+          .addOption("col", "纵向")
+          .setValue(ha.layout || "row")
+          .onChange((v) => setHa({ layout: v as "row" | "col" }))
       );
 
     // 显示当前头图预览（如果有自定义图）

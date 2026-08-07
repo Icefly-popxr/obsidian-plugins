@@ -3,7 +3,7 @@ import type { WidgetCtx, WorkbenchWidget } from "./types";
 import { createPanel, emptyState, addTitleConfig, WidgetConfigDrawer } from "./helpers";
 
 /**
- * 导航内容组件（nav-links）：页面导航列表
+ * 页面导航组件（nav-links）：页面导航列表
  *  - 每条目 = {图标 emoji, 标题, 目标页}，点击跳转工作台子页
  *  - 配置右上角 ⚙️ 打开右侧抽屉，支持多实例（#N 后缀）
  */
@@ -55,7 +55,7 @@ function readCfg(ctx: WidgetCtx): NavLinksCfg {
 
 const widget: WorkbenchWidget = {
   id: "nav-links",
-  title: "导航内容",
+  title: "页面导航",
   icon: "🧭",
   accent: DEFAULT_ACCENT,
   category: "universal",

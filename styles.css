@@ -243,6 +243,18 @@ body.theme-light .workbench-container {
   pointer-events: auto;
 }
 
+/* 纵向布局（方案 C：heroActions.layout = col） */
+.wb-hero-actions-col {
+  flex-direction: column;
+  align-items: stretch;
+  right: 10px;
+  bottom: 10px;
+  gap: 3px;
+}
+.wb-hero-actions-col .wb-hero-action {
+  text-align: center;
+}
+
 .wb-hero-action {
   padding: 6px 14px;
   border-radius: 6px;
@@ -2804,7 +2816,7 @@ body.theme-light .dash-heat-cell.on.c1 { background: #93c5fd; }
   gap: 6px;
 }
 
-/* ── nav-links 导航内容（页面导航列表） ── */
+/* ── nav-links 页面导航（页面导航列表） ── */
 .wb-nav-row {
   cursor: pointer;
   border-radius: 8px;
