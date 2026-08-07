@@ -541,6 +541,8 @@ export class WorkbenchView extends ItemView {
   private _dragBound = false;
   private dragState: { el: HTMLElement; startX: number; startY: number; origLeft: number; origTop: number } | null = null;
   private resizeState: { el: HTMLElement; startX: number; startY: number; origW: number; origH: number } | null = null;
+  /** 拖拽对齐参考线层（画布内绝对定位） */
+  private dragGuides: HTMLElement | null = null;
 
   private startDrag(e: MouseEvent, el: HTMLElement) {
     const rect = el.getBoundingClientRect();
@@ -552,6 +554,72 @@ export class WorkbenchView extends ItemView {
       origTop: rect.top,
     };
     el.classList.add("dragging");
+    this.ensureDragGuides();
+  }
+
+  /** 创建参考线层（挂在 .wb-widgets 画布内，覆盖整个画布） */
+  private ensureDragGuides() {
+    if (this.dragGuides && this.dragGuides.isConnected) return;
+    const canvas = this.containerEl.querySelector<HTMLElement>(".wb-widgets");
+    if (!canvas) return;
+    this.dragGuides = canvas.createDiv({ cls: "wb-drag-guides" });
+  }
+
+  private clearDragGuides() {
+    if (this.dragGuides) this.dragGuides.empty();
+  }
+
+  /** 计算对齐参考线：当前卡片边缘/中线 对齐 画布内其他卡片（阈值 6px） */
+  private computeAlignGuides(
+    el: HTMLElement,
+    left: number,
+    top: number
+  ): { x: number | null; y: number | null } {
+    const canvas = this.containerEl.querySelector<HTMLElement>(".wb-widgets");
+    if (!canvas) return { x: null, y: null };
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    // 当前卡片候选线（左/中/右、上/中/下）
+    const myX = [left, left + w / 2, left + w];
+    const myY = [top, top + h / 2, top + h];
+    // 收集其他卡片候选线
+    const othersX: number[] = [];
+    const othersY: number[] = [];
+    canvas.querySelectorAll<HTMLElement>(".wb-panel, .wb-kpi-card, .wb-chart").forEach((c) => {
+      if (c === el || c.contains(el)) return;
+      const ow = c.offsetWidth;
+      const oh = c.offsetHeight;
+      const cl = c.offsetLeft;
+      const ct = c.offsetTop;
+      othersX.push(cl, cl + ow / 2, cl + ow);
+      othersY.push(ct, ct + oh / 2, ct + oh);
+    });
+    if (othersX.length === 0) return { x: null, y: null };
+
+    const TH = 6;
+    let bestX: number | null = null;
+    let bestXDist = Infinity;
+    for (const mx of myX) {
+      for (const ox of othersX) {
+        const d = Math.abs(mx - ox);
+        if (d <= TH && d < bestXDist) {
+          bestXDist = d;
+          bestX = ox;
+        }
+      }
+    }
+    let bestY: number | null = null;
+    let bestYDist = Infinity;
+    for (const my of myY) {
+      for (const oy of othersY) {
+        const d = Math.abs(my - oy);
+        if (d <= TH && d < bestYDist) {
+          bestYDist = d;
+          bestY = oy;
+        }
+      }
+    }
+    return { x: bestX, y: bestY };
   }
 
   private onDrag(e: MouseEvent) {
@@ -563,21 +631,36 @@ export class WorkbenchView extends ItemView {
     let left = origLeft + dx - parentRect.left;
     let top = origTop + dy - parentRect.top;
 
-    // 网格吸附：与 initDashboardLayout 的网格参数保持一致
-    const wrap = this.containerEl.querySelector(".workbench-container");
-    const canvas = wrap?.querySelector<HTMLElement>(".wb-widgets");
-    if (canvas) {
-      const total = canvas.querySelectorAll(".wb-panel, .wb-kpi-card, .wb-chart").length;
-      const cols = Math.max(1, Math.ceil(Math.sqrt(total)));
-      const gap = 12;
-      const cellW = Math.max(260, (canvas.clientWidth - (cols - 1) * gap) / cols);
-      const cellH = 180;
-      left = Math.round(left / (cellW + gap)) * (cellW + gap);
-      top = Math.round(top / (cellH + gap)) * (cellH + gap);
-    }
+    // 对齐参考线：命中则吸附并显示参考线
+    const guides = this.computeAlignGuides(el, left, top);
+    if (guides.x !== null) left = guides.x;
+    if (guides.y !== null) top = guides.y;
 
     el.style.left = left + "px";
     el.style.top = top + "px";
+
+    this.renderDragGuides(el, left, top, guides);
+  }
+
+  /** 渲染参考线：命中位置画横/竖参考线，未命中清空 */
+  private renderDragGuides(
+    el: HTMLElement,
+    left: number,
+    top: number,
+    guides: { x: number | null; y: number | null }
+  ) {
+    const layer = this.dragGuides;
+    if (!layer) return;
+    layer.empty();
+    if (guides.x !== null) {
+      const v = layer.createDiv({ cls: "wb-guide-v" });
+      v.style.left = `${guides.x}px`;
+    }
+    if (guides.y !== null) {
+      const h = layer.createDiv({ cls: "wb-guide-h" });
+      h.style.top = `${guides.y}px`;
+    }
+    void el;
   }
 
   private applyResize(e: MouseEvent) {
@@ -595,6 +678,7 @@ export class WorkbenchView extends ItemView {
     if (!this.dragState) return;
     const { el } = this.dragState;
     el.classList.remove("dragging");
+    this.clearDragGuides();
     this.saveDashboardLayout();
     this.dragState = null;
   }
@@ -687,14 +771,7 @@ export class WorkbenchView extends ItemView {
     const topbar = container.createDiv({ cls: "wb-topbar" });
     const title = topbar.createDiv({ cls: "wb-title" });
     title.createSpan({ text: "🏴‍☠️ 草帽航海工作台" });
-    // 重置布局按钮（清空已保存的卡片位置，恢复初始网格）
-    const resetBtn = topbar.createDiv({ cls: "wb-reset-layout", text: "🗑 重置布局" });
-    resetBtn.addEventListener("click", () => {
-      this.plugin.settings.dashboardLayout = {};
-      this.plugin.saveSettings();
-      this.reload();
-    });
-    // 头图胶囊已提供 搜索/新建/刷新/设置/主题 功能，顶栏只保留标题 + 重置
+    // 头图胶囊已提供 搜索/新建/刷新/设置/主题 功能，顶栏只保留标题
 
     // widget 画布：按当前页组件列表渲染（自由布局由 initDashboardLayout 接管）
     this.renderWidgetCanvas(container, "home");

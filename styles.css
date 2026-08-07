@@ -727,6 +727,31 @@ body.theme-light .wb-kpi-mini .wb-num { animation: none; }
   border-radius: 0 0 12px 0;
 }
 
+/* ── 拖拽对齐参考线 ── */
+.wb-drag-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+  overflow: hidden;
+}
+.wb-guide-v,
+.wb-guide-h {
+  position: absolute;
+  background: var(--wb-gold, #fbbf24);
+  box-shadow: 0 0 6px rgba(251, 191, 36, .7);
+}
+.wb-guide-v {
+  top: 0;
+  bottom: 0;
+  width: 1.5px;
+}
+.wb-guide-h {
+  left: 0;
+  right: 0;
+  height: 1.5px;
+}
+
 .wb-resize-handle:hover {
   background: linear-gradient(135deg, transparent 50%, var(--v6-primary, #8b5cf6) 50%);
 }
