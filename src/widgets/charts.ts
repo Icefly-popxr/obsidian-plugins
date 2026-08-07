@@ -117,8 +117,9 @@ function drawChart(
   labelFontSize: number
 ) {
   if (data.length === 0) return;
+  // 布局随正文字号自适应：字号越大，画布越高、留白越大，避免字体重叠/截断
   const w = 300;
-  const h = 140;
+  const h = Math.max(140, 90 + labelFontSize * 4);
   const dpr = window.devicePixelRatio || 1;
   const canvas = document.createElement("canvas");
   canvas.width = w * dpr;
@@ -133,6 +134,8 @@ function drawChart(
   g.clearRect(0, 0, w, h);
   const fs = `${labelFontSize}px sans-serif`;
   const fsSmall = `${Math.max(8, labelFontSize - 1)}px sans-serif`;
+  // 行距/偏移随字号
+  const lineGap = Math.max(15, labelFontSize + 6);
 
   const max = Math.max(...data.map(([, v]) => v), 1);
 
@@ -140,9 +143,10 @@ function drawChart(
   if (type === "pie") {
     const total = data.reduce((a, [, v]) => a + v, 0);
     if (total <= 0) return;
-    const cx = showLegend ? 105 : w / 2;
+    // 有图例时饼图右移并增大半径，缩小饼图与图例之间的留白
+    const cx = showLegend ? 125 : w / 2;
     const cy = h / 2;
-    const r = Math.min(cx - 12, cy - 12, 55);
+    const r = Math.min(cx - 16, cy - 12, 62);
     let start = -Math.PI / 2;
     data.forEach(([, v], i) => {
       if (v <= 0) return;
@@ -158,7 +162,8 @@ function drawChart(
         g.fillStyle = "#fff";
         g.font = fs;
         g.textAlign = "center";
-        g.fillText(String(v), cx + Math.cos(mid) * r * 0.6, cy + Math.sin(mid) * r * 0.6 + 3);
+        // 数值更靠近圆心，缩小文字与图形边缘的留白
+        g.fillText(String(v), cx + Math.cos(mid) * r * 0.45, cy + Math.sin(mid) * r * 0.45 + 3);
       }
       start += ang;
     });
@@ -170,18 +175,29 @@ function drawChart(
         g.fillStyle = "#8d9ab0";
         g.font = fs;
         g.textAlign = "left";
-        g.fillText(`${label} ${v}`, w - 54, ly);
-        ly += 15;
+        // 长标签截断，避免溢出画布
+        const full = `${label} ${v}`;
+        const maxW = 66;
+        const shown = g.measureText(full).width > maxW ? full.slice(0, 8) + "…" : full;
+        g.fillText(shown, w - 54, ly);
+        ly += lineGap;
       });
     }
     return;
   }
 
   // ── 柱状 / 折线共用坐标系 ──
-  const padL = 32;
-  const padB = 20;
-  const padT = 12;
+  const padL = Math.max(32, labelFontSize + 20);
+  const padT = Math.max(12, labelFontSize + 2);
   const plotW = w - padL - 8;
+  const bw = plotW / data.length;
+  // 每个柱宽可容纳的字符数（汉字≈字号宽），据此把标签拆成多行，避免一行平铺重叠
+  const charsPerLine = Math.max(1, Math.floor((bw - 4) / Math.max(7, labelFontSize)));
+  const maxLabelLines = data.reduce(
+    (m, [label]) => Math.max(m, Math.ceil(String(label).length / charsPerLine)),
+    1
+  );
+  const padB = Math.max(20, labelFontSize + 8 + (maxLabelLines - 1) * lineGap);
   const plotH = h - padT - padB;
   const ticks = 4;
   for (let i = 0; i <= ticks; i++) {
@@ -197,7 +213,15 @@ function drawChart(
     g.textAlign = "right";
     g.fillText(String(v), padL - 4, y + 3);
   }
-  const bw = plotW / data.length;
+
+  /** 把标签按每行字数拆成多行（居中分行显示） */
+  const wrapLabel = (text: string): string[] => {
+    const out: string[] = [];
+    for (let i = 0; i < text.length; i += charsPerLine) {
+      out.push(text.slice(i, i + charsPerLine));
+    }
+    return out.length ? out : [""];
+  };
 
   if (type === "bar") {
     data.forEach(([label, v], i) => {
@@ -218,7 +242,11 @@ function drawChart(
       g.fillStyle = "#8d9ab0";
       g.font = fsSmall;
       g.textAlign = "center";
-      g.fillText(String(label), padL + i * bw + bw / 2, padT + plotH + 12);
+      // 标签分行绘制：每行 charsPerLine 字，垂直居中于柱宽
+      const lines = wrapLabel(String(label));
+      lines.forEach((ln, li) => {
+        g.fillText(ln, padL + i * bw + bw / 2, padT + plotH + labelFontSize + 4 + li * lineGap);
+      });
     });
   } else {
     // 折线
@@ -248,7 +276,11 @@ function drawChart(
       g.fillStyle = "#8d9ab0";
       g.font = fsSmall;
       g.textAlign = "center";
-      g.fillText(String(label), x, padT + plotH + 12);
+      // 标签分行绘制
+      const lines = wrapLabel(String(label));
+      lines.forEach((ln, li) => {
+        g.fillText(ln, x, padT + plotH + labelFontSize + 4 + li * lineGap);
+      });
     });
   }
 }
