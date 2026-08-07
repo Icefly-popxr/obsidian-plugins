@@ -15,6 +15,8 @@ interface TextContentCfg {
   text?: string;
   icon?: string;
   fontSize?: number;
+  /** 标题栏字号（含图标 emoji 跟随） */
+  titleFontSize?: number;
   align?: "left" | "center" | "right";
 }
 
@@ -27,6 +29,8 @@ function readCfg(ctx: WidgetCtx): TextContentCfg {
     text: String(cfg.text || ""),
     icon: String(cfg.icon || "📝"),
     fontSize: typeof cfg.fontSize === "number" && cfg.fontSize > 0 ? cfg.fontSize : 14,
+    titleFontSize:
+      typeof cfg.titleFontSize === "number" && cfg.titleFontSize > 0 ? cfg.titleFontSize : 14,
     align: cfg.align || "left",
   };
 }
@@ -47,6 +51,20 @@ const widget: WorkbenchWidget = {
       icon: cfg.icon || "📝",
       accent: DEFAULT_ACCENT,
     });
+
+    // 标题栏字号：应用到标题文字 + 图标 emoji（跟随自适应）
+    const titleFontSize = cfg.titleFontSize || 14;
+    const panel = bd.closest(".wb-panel");
+    if (panel) {
+      const ico = panel.querySelector<HTMLElement>(".wb-ico");
+      const titleEl = panel.querySelector<HTMLElement>(".wb-title");
+      if (ico) {
+        ico.style.fontSize = `${titleFontSize}px`;
+        ico.style.width = `${titleFontSize + 8}px`;
+        ico.style.height = `${titleFontSize + 8}px`;
+      }
+      if (titleEl) titleEl.style.fontSize = `${titleFontSize}px`;
+    }
 
     const text = String(cfg.text || "").trim();
     if (!text) {
@@ -154,6 +172,41 @@ const widget: WorkbenchWidget = {
         size = Math.min(32, size + 1);
         sizeText.setValue(String(size));
         update({ fontSize: size });
+      })
+    );
+
+    // 标题字号：− / 数值输入 / ＋ 按钮（范围 10-32，标题与图标 emoji 跟随）
+    let titleSize =
+      typeof inst.titleFontSize === "number" && inst.titleFontSize > 0 ? inst.titleFontSize : 14;
+    let titleSizeText: TextComponent;
+    const titleSizeSetting = new Setting(el)
+      .setName("标题字号")
+      .setDesc("标题栏文字与图标 emoji 的大小（px）");
+    titleSizeSetting.addText((t) => {
+      titleSizeText = t;
+      t.setValue(String(titleSize));
+      t.inputEl.style.width = "48px";
+      t.inputEl.style.textAlign = "center";
+      t.onChange((v) => {
+        const n = parseInt(v, 10);
+        if (!isNaN(n) && n >= 10 && n <= 32) {
+          titleSize = n;
+          update({ titleFontSize: n });
+        }
+      });
+    });
+    titleSizeSetting.addButton((b) =>
+      b.setButtonText("−").onClick(() => {
+        titleSize = Math.max(10, titleSize - 1);
+        titleSizeText.setValue(String(titleSize));
+        update({ titleFontSize: titleSize });
+      })
+    );
+    titleSizeSetting.addButton((b) =>
+      b.setButtonText("＋").onClick(() => {
+        titleSize = Math.min(32, titleSize + 1);
+        titleSizeText.setValue(String(titleSize));
+        update({ titleFontSize: titleSize });
       })
     );
 
