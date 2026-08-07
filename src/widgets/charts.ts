@@ -143,8 +143,8 @@ function drawChart(
   if (type === "pie") {
     const total = data.reduce((a, [, v]) => a + v, 0);
     if (total <= 0) return;
-    // 有图例时饼图略左移，给右侧图例区留足空间（文字完整显示，不截断）
-    const cx = showLegend ? 118 : w / 2;
+    // 有图例时饼图左移并留出空隙（右边缘 172 vs 色块 180），文字完整显示不截断
+    const cx = showLegend ? 110 : w / 2;
     const cy = h / 2;
     const r = Math.min(cx - 16, cy - 12, 62);
     let start = -Math.PI / 2;
