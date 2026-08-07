@@ -91,7 +91,7 @@ const widget: WorkbenchWidget = {
     const renderList = () => {
       listEl.empty();
       if (items.length === 0) {
-        emptyState(listEl, "暂无条目，点右上角 ➕ 添加");
+        emptyState(listEl, "暂无条目，点右上角 ⚙️ 添加");
         return;
       }
       items.forEach((it, i) => {
