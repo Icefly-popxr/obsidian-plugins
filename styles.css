@@ -584,6 +584,75 @@ body.theme-light .wb-kpi-mini .wb-num { animation: none; }
   margin-top: 2px;
 }
 
+/* ── 数据统计单卡片模式（一张大卡一个 KPI，Emoji 位置可左/右/上/下） ── */
+.wb-kpi-single {
+  position: relative;
+  min-height: 96px;
+  border: 1px solid var(--wb-border);
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--w-accent) 8%, transparent), transparent 55%),
+    var(--wb-card);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: row; /* 默认 left：Emoji 在左、文字在右 */
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: left;
+  overflow: hidden;
+  transition: transform .15s ease, box-shadow .15s ease, border-color .15s;
+}
+.wb-kpi-single:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, .25);
+  border-color: var(--wb-gold);
+}
+/* Emoji 位置变体：r = 右，t = 上，b = 下 */
+.wb-kpi-single.r {
+  flex-direction: row-reverse;
+}
+.wb-kpi-single.t {
+  flex-direction: column;
+  text-align: center;
+}
+.wb-kpi-single.b {
+  flex-direction: column-reverse;
+  text-align: center;
+}
+.wb-kpi-single .wb-ico {
+  flex-shrink: 0;
+  width: clamp(28px, 8cqw, 52px);
+  height: clamp(28px, 8cqw, 52px);
+  font-size: clamp(18px, 5.5cqw, 32px);
+  line-height: 1;
+}
+.wb-kpi-single .wb-kpi-txt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+}
+.wb-kpi-single.t .wb-kpi-txt,
+.wb-kpi-single.b .wb-kpi-txt {
+  align-items: center;
+}
+.wb-kpi-single .wb-num {
+  font-family: var(--wb-mono);
+  font-size: clamp(22px, 8cqw, 44px);
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--wb-gold);
+  animation: wb-glow 3.5s ease-in-out infinite;
+}
+body.theme-light .wb-kpi-single .wb-num { animation: none; }
+.wb-kpi-single .wb-lbl {
+  font-size: 12px;
+  color: var(--wb-sub);
+}
+
 /* ═══════════ Border Glow（React Bits 移植：cursor 驱动 mesh gradient） ═══════════ */
 .wb-glow {
   --edge-proximity: 60;
@@ -1312,36 +1381,48 @@ body.theme-light .wb-bubble {
   pointer-events: none;
 }
 
-/* 标题最小化（仅正文模式）：标题栏压成细条仍可拖拽，hover 浮现标题，正文占满 */
+/* 标题最小化（仅正文模式）：标题栏固定为细条仍可拖拽，
+   hover 只在细条上浮显 ⚙️/折叠按钮（绝对定位，不改变高度，正文不动） */
 .wb-panel.wb-w.wb-headless .wb-hd {
   height: 6px;
   min-height: 6px;
-  padding: 0 8px;
-  overflow: hidden;
+  padding: 0;
+  overflow: visible;
   gap: 0;
-  transition: height .18s ease, min-height .18s ease;
+  position: relative;
+  background: color-mix(in srgb, var(--w-accent) 14%, transparent);
 }
 .wb-panel.wb-w.wb-headless .wb-hd .wb-ico,
 .wb-panel.wb-w.wb-headless .wb-hd .wb-title {
   display: none;
 }
+/* 折叠/⚙️ 按钮：默认隐藏，hover 时绝对定位浮在细条右上角（不占高度） */
 .wb-panel.wb-w.wb-headless .wb-hd .wb-collapse,
 .wb-panel.wb-w.wb-headless .wb-hd .wb-more {
   font-size: 0;
   padding: 0;
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  z-index: 5;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s ease;
 }
-.wb-panel.wb-w.wb-headless:hover .wb-hd {
-  height: 34px;
-  min-height: 34px;
-}
-.wb-panel.wb-w.wb-headless:hover .wb-hd .wb-ico,
-.wb-panel.wb-w.wb-headless:hover .wb-hd .wb-title {
-  display: inline-flex;
+.wb-panel.wb-w.wb-headless .wb-hd .wb-collapse {
+  right: 30px;
 }
 .wb-panel.wb-w.wb-headless:hover .wb-hd .wb-collapse,
 .wb-panel.wb-w.wb-headless:hover .wb-hd .wb-more {
-  font-size: 12px;
-  padding: 2px 6px;
+  font-size: 10px;
+  padding: 2px 5px;
+  opacity: .75;
+  pointer-events: auto;
+}
+.wb-panel.wb-w.wb-headless:hover .wb-hd .wb-collapse:hover,
+.wb-panel.wb-w.wb-headless:hover .wb-hd .wb-more:hover {
+  opacity: 1;
 }
 .wb-panel.wb-w.wb-headless .wb-bd {
   height: auto;

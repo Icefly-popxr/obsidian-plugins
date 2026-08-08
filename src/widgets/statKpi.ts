@@ -30,6 +30,15 @@ interface KpiItem {
 }
 
 interface StatKpiCfg {
+  /** 单卡指标（单卡片模式） */
+  metric?: KpiMetric;
+  /** 单卡图标 */
+  icon?: string;
+  /** 单卡标签 */
+  label?: string;
+  /** 图标位置：left/right/top/bottom（解决自由组合布局） */
+  emojiPos?: "left" | "right" | "top" | "bottom";
+  /** 兼容旧配置：多卡 items，取第一张作为单卡显示 */
   items?: KpiItem[];
   titleFontSize?: number;
 }
@@ -64,19 +73,17 @@ const DEFAULT_ICONS: Record<KpiMetric, string> = {
   habit30: "📅",
 };
 
-const DEFAULT_ITEMS: KpiItem[] = [
-  { metric: "totalNotes", icon: "📝", label: "全部笔记" },
-  { metric: "kcCards", icon: "🎴", label: "KC 卡片" },
-  { metric: "domains", icon: "🧭", label: "领域" },
-  { metric: "todayAdded", icon: "✨", label: "今日新增" },
-  { metric: "todayTasks", icon: "✅", label: "今日任务" },
-  { metric: "streak", icon: "🔥", label: "连续打卡" },
-];
+const DEFAULT_METRIC: KpiMetric = "totalNotes";
 
 function readCfg(ctx: WidgetCtx): StatKpiCfg {
   const cfg = (ctx.widgetConfig || {}) as StatKpiCfg;
+  // 兼容旧配置：items 第一张作为单卡显示；新配置直接读 metric/icon/label
+  const legacy = Array.isArray(cfg.items) && cfg.items.length > 0 ? cfg.items[0] : undefined;
   return {
-    items: Array.isArray(cfg.items) && cfg.items.length > 0 ? cfg.items : DEFAULT_ITEMS,
+    metric: cfg.metric || legacy?.metric || DEFAULT_METRIC,
+    icon: cfg.icon || legacy?.icon || DEFAULT_ICONS[cfg.metric || legacy?.metric || DEFAULT_METRIC],
+    label: cfg.label || legacy?.label || METRIC_LABELS[cfg.metric || legacy?.metric || DEFAULT_METRIC],
+    emojiPos: cfg.emojiPos || "left",
     titleFontSize:
       typeof cfg.titleFontSize === "number" && cfg.titleFontSize > 0 ? cfg.titleFontSize : 14,
   };
@@ -129,7 +136,6 @@ const widget: WorkbenchWidget = {
   render(ctx: WidgetCtx, root: HTMLElement) {
     const cfg = readCfg(ctx);
     const titleFontSize = cfg.titleFontSize || 14;
-    const items = cfg.items || DEFAULT_ITEMS;
 
     const bd = createPanel(root, {
       id: "stat-kpi",
@@ -156,14 +162,13 @@ const widget: WorkbenchWidget = {
       if (titleEl) titleEl.style.fontSize = `${titleFontSize}px`;
     }
 
-    // KPI 卡网格：用独立类名，避免被自由布局系统（.wb-kpi-card）单独绝对定位
-    const grid = bd.createDiv({ cls: "wb-kpi-grid" });
-    items.slice(0, 9).forEach((it, i) => {
-      const card = grid.createDiv({ cls: "wb-kpi-mini" });
-      card.createDiv({ cls: "wb-ico", text: it.icon || DEFAULT_ICONS[it.metric] });
-      card.createDiv({ cls: "wb-num", text: computeMetric(ctx, it.metric) });
-      card.createDiv({ cls: "wb-lbl", text: it.label || METRIC_LABELS[it.metric] });
-    });
+    // 单张大卡：一个 KPI 统计（Emoji + 数值 + 标签），按 emojiPos 切换左右/上下布局
+    const posClass = cfg.emojiPos === "right" ? " r" : cfg.emojiPos === "top" ? " t" : cfg.emojiPos === "bottom" ? " b" : "";
+    const card = bd.createDiv({ cls: "wb-kpi-single" + posClass });
+    card.createDiv({ cls: "wb-ico", text: cfg.icon || DEFAULT_ICONS[cfg.metric || DEFAULT_METRIC] });
+    const txt = card.createDiv({ cls: "wb-kpi-txt" });
+    txt.createDiv({ cls: "wb-num", text: computeMetric(ctx, cfg.metric || DEFAULT_METRIC) });
+    txt.createDiv({ cls: "wb-lbl", text: cfg.label || METRIC_LABELS[cfg.metric || DEFAULT_METRIC] });
     // 内容渲染完成后应用正文字号（KPI 数值/标签）
     applyBodyFontSize(bd, bodyFontSizeOf(ctx.widgetConfig));
   },
@@ -178,94 +183,72 @@ const widget: WorkbenchWidget = {
       save();
     };
 
-    // ── KPI 卡条目编辑器 ──
+    // 兼容旧配置：items 第一张作为初始单卡配置
+    const legacy = Array.isArray(inst.items) && inst.items.length > 0 ? inst.items[0] : undefined;
+    const curMetric = inst.metric || legacy?.metric || DEFAULT_METRIC;
+
+    // ── 单卡 KPI 配置 ──
     el.createEl("h4", {
       text: "🎴 统计卡片",
       attr: { style: "margin:14px 0 6px;font-size:13px;font-weight:700;" },
     });
     el.createEl("p", {
-      text: "每张卡片 = 指标 + 图标 + 标签，可增删；最多 9 张。",
+      text: "单卡片 = 指标 + 图标 + 标签；可添加多个「数据统计」实例自由组合布局。",
       cls: "setting-item-description",
     });
 
-    const items = Array.isArray(inst.items) && inst.items.length > 0
-      ? inst.items.map((x) => ({ ...x }))
-      : DEFAULT_ITEMS.map((x) => ({ ...x }));
-    const listWrap = el.createDiv({ cls: "wb-list-editor" });
-
-    const renderEditor = () => {
-      listWrap.empty();
-      items.forEach((it, i) => {
-        const row = listWrap.createDiv({
-          attr: { style: "display:flex;align-items:center;gap:6px;margin-bottom:6px;" },
-        });
-        // 指标选择
-        const metricSel = row.createEl("select");
-        (Object.keys(METRIC_LABELS) as KpiMetric[]).forEach((k) => {
-          const opt = metricSel.createEl("option", { text: METRIC_LABELS[k] });
-          opt.value = k;
-        });
-        metricSel.value = it.metric;
-        metricSel.style.flex = "1";
-        metricSel.style.padding = "4px 6px";
-        metricSel.style.fontSize = "12px";
-        metricSel.style.borderRadius = "6px";
-        metricSel.style.border = "1px solid var(--background-modifier-border)";
-        metricSel.addEventListener("change", () => {
-          items[i].metric = metricSel.value as KpiMetric;
-          items[i].icon = DEFAULT_ICONS[items[i].metric];
-          iconInput.value = items[i].icon;
-          update({ items: [...items] });
-        });
-        // 图标
-        const iconInput = row.createEl("input");
-        iconInput.value = it.icon || DEFAULT_ICONS[it.metric];
-        iconInput.style.width = "40px";
-        iconInput.style.padding = "4px 4px";
-        iconInput.style.fontSize = "12px";
-        iconInput.style.borderRadius = "6px";
-        iconInput.style.border = "1px solid var(--background-modifier-border)";
-        iconInput.addEventListener("input", () => {
-          items[i].icon = iconInput.value.trim();
-          update({ items: [...items] });
-        });
-        // 标签
-        const labelInput = row.createEl("input");
-        labelInput.value = it.label || METRIC_LABELS[it.metric];
-        labelInput.style.width = "72px";
-        labelInput.style.padding = "4px 6px";
-        labelInput.style.fontSize = "12px";
-        labelInput.style.borderRadius = "6px";
-        labelInput.style.border = "1px solid var(--background-modifier-border)";
-        labelInput.addEventListener("input", () => {
-          items[i].label = labelInput.value.trim();
-          update({ items: [...items] });
-        });
-        // 删除
-        const del = row.createEl("button", { text: "🗑" });
-        del.style.cursor = "pointer";
-        del.style.fontSize = "12px";
-        del.addEventListener("click", () => {
-          items.splice(i, 1);
-          update({ items: [...items] });
-          renderEditor();
-        });
+    // 指标选择
+    const metricSetting = new Setting(el).setName("统计指标");
+    metricSetting.addDropdown((dd) => {
+      (Object.keys(METRIC_LABELS) as KpiMetric[]).forEach((k) => {
+        dd.addOption(k, METRIC_LABELS[k]);
       });
-      // 添加卡片（最多 9 张）
-      if (items.length < 9) {
-        const addBtn = listWrap.createEl("button", {
-          text: "➕ 添加卡片",
-          attr: { style: "font-size:12px;padding:4px 12px;border-radius:6px;cursor:pointer;" },
-        });
-        addBtn.addEventListener("click", () => {
-          const m: KpiMetric = "totalNotes";
-          items.push({ metric: m, icon: DEFAULT_ICONS[m], label: METRIC_LABELS[m] });
-          update({ items: [...items] });
-          renderEditor();
-        });
-      }
-    };
-    renderEditor();
+      dd.setValue(curMetric).onChange((v) => {
+        const m = v as KpiMetric;
+        update({ metric: m, icon: DEFAULT_ICONS[m], label: METRIC_LABELS[m] });
+      });
+    });
+
+    // 图标
+    new Setting(el)
+      .setName("图标")
+      .setDesc("卡片大图标 emoji")
+      .addText((t) =>
+        t
+          .setPlaceholder("例如：📝")
+          .setValue(String(inst.icon || legacy?.icon || DEFAULT_ICONS[curMetric]))
+          .onChange((v) => update({ icon: v.trim() }))
+      );
+
+    // 标签
+    new Setting(el)
+      .setName("标签")
+      .setDesc("数值下方的说明文字")
+      .addText((t) =>
+        t
+          .setPlaceholder("例如：全部笔记")
+          .setValue(String(inst.label || legacy?.label || METRIC_LABELS[curMetric]))
+          .onChange((v) => update({ label: v.trim() }))
+      );
+
+    // 图标位置
+    new Setting(el)
+      .setName("图标位置")
+      .setDesc("Emoji 相对文字的位置：左右并排 / 上下排列，方便自由组合布局")
+      .addDropdown((dd) =>
+        dd
+          .addOption("left", "左侧（文字在右）")
+          .addOption("right", "右侧（文字在左）")
+          .addOption("top", "上方（文字在下）")
+          .addOption("bottom", "下方（文字在上）")
+          .setValue(inst.emojiPos || "left")
+          .onChange((v) => update({ emojiPos: v as "left" | "right" | "top" | "bottom" }))
+      );
+
+    el.createEl("p", {
+      text: "💡 提示：添加多个「数据统计」实例（+ 新建），各自配置不同指标/图标位置，即可自由组合 KPI 布局。",
+      cls: "setting-item-description",
+    });
   },
 };
 
