@@ -1298,6 +1298,56 @@ body.theme-light .wb-bubble {
   box-shadow: 0 4px 18px rgba(0, 0, 0, .2);
 }
 
+/* 折叠态：只保留标题栏，内容区隐藏、外框高度收缩（覆盖布局保存的固定高度） */
+.wb-panel.wb-w.collapsed {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+.wb-panel.wb-w.collapsed .wb-bd {
+  display: none !important;
+}
+.wb-panel.wb-w.collapsed .wb-resize-handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 标题最小化（仅正文模式）：标题栏压成细条仍可拖拽，hover 浮现标题，正文占满 */
+.wb-panel.wb-w.wb-headless .wb-hd {
+  height: 6px;
+  min-height: 6px;
+  padding: 0 8px;
+  overflow: hidden;
+  gap: 0;
+  transition: height .18s ease, min-height .18s ease;
+}
+.wb-panel.wb-w.wb-headless .wb-hd .wb-ico,
+.wb-panel.wb-w.wb-headless .wb-hd .wb-title {
+  display: none;
+}
+.wb-panel.wb-w.wb-headless .wb-hd .wb-collapse,
+.wb-panel.wb-w.wb-headless .wb-hd .wb-more {
+  font-size: 0;
+  padding: 0;
+}
+.wb-panel.wb-w.wb-headless:hover .wb-hd {
+  height: 34px;
+  min-height: 34px;
+}
+.wb-panel.wb-w.wb-headless:hover .wb-hd .wb-ico,
+.wb-panel.wb-w.wb-headless:hover .wb-hd .wb-title {
+  display: inline-flex;
+}
+.wb-panel.wb-w.wb-headless:hover .wb-hd .wb-collapse,
+.wb-panel.wb-w.wb-headless:hover .wb-hd .wb-more {
+  font-size: 12px;
+  padding: 2px 6px;
+}
+.wb-panel.wb-w.wb-headless .wb-bd {
+  height: auto;
+  flex: 1;
+}
+
 /* 顶部 accent 高光条 */
 .wb-panel.wb-w::before {
   content: "";
@@ -2960,13 +3010,17 @@ body.theme-light .dash-heat-cell.on.c1 { background: #93c5fd; }
 .modal.wb-drawer {
   position: fixed;
   right: 0;
-  bottom: auto; /* 高度自适应内容，不撑满到窗口底部 */
+  /* 视口垂直居中：top:50% + translateY(-50%)，跟随当前视图位置，
+     滚动到任意位置打开都不跳跃；滑入动画的 translateX 与此组合 */
+  top: 50%;
+  bottom: auto;
   margin: 0;
   padding: 0;
-  /* top 由 JS 动态对齐左菜单栏上沿（见 WidgetConfigDrawer） */
+  /* 高度自适应内容，上下各留白 24px（不占满整屏） */
+  height: fit-content;
+  max-height: calc(100vh - 48px);
   width: 380px;
   max-width: 92vw;
-  max-height: calc(100vh - 16px);
   overflow: hidden;
   border-radius: 0;
   border: none;
@@ -2974,14 +3028,14 @@ body.theme-light .dash-heat-cell.on.c1 { background: #93c5fd; }
   box-shadow: -12px 0 32px rgba(0, 0, 0, .35);
   display: flex;
   flex-direction: column;
-  /* 滑入/滑出动画 */
+  /* 滑入/滑出动画（垂直 -50% 保持居中，水平位移做滑动） */
   transition: transform .26s cubic-bezier(.22, .61, .36, 1);
-  transform: translateX(0);
+  transform: translate(0, -50%);
   will-change: transform;
 }
 .modal.wb-drawer.wb-drawer-enter,
 .modal.wb-drawer.wb-drawer-exit {
-  transform: translateX(100%);
+  transform: translate(100%, -50%);
 }
 .modal.wb-drawer .modal-content {
   flex: 1;

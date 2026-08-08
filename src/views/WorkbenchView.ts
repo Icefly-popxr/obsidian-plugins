@@ -538,6 +538,10 @@ export class WorkbenchView extends ItemView {
         host.querySelectorAll<HTMLElement>(".wb-panel, .wb-kpi-card, .wb-chart").forEach((el) => {
           const base = el.dataset.id || (el.classList.contains("wb-kpi-card") ? "stat" : "card");
           el.dataset.id = prefix + base + (suffix ? `-${suffix}` : "");
+          // 标题最小化（仅正文模式）：widgetConfigs[instId].headless → .wb-headless
+          if (instCfg.headless === true) {
+            el.classList.add("wb-headless");
+          }
           // 光圈效果：全局统一开关（所有组件一致，避免按实例导致互相影响）
           if (this.plugin.settings.showGlow) {
             el.classList.add("wb-glow");

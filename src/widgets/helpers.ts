@@ -44,16 +44,16 @@ export class WidgetConfigDrawer extends Modal {
       this.modalEl.removeClass("wb-drawer-enter");
     });
 
-    // 上沿对齐左菜单栏（.wb-sidebar）顶部，不占满整屏
-    const leaves = this.app.workspace.getLeavesOfType("knowledge-workbench-view");
-    const leaf = leaves[0];
-    if (leaf) {
-      const sidebar = leaf.view.containerEl.querySelector<HTMLElement>(".wb-sidebar");
-      if (sidebar) {
-        const rect = sidebar.getBoundingClientRect();
-        this.modalEl.style.top = `${Math.max(8, rect.top)}px`;
-      }
-    }
+    // 视口垂直居中（跟随当前视图位置，滚动到任意处打开都不跳跃）。
+    // 用内联样式强制定位——Obsidian 默认 .modal 样式会覆盖 CSS 类里的
+    // position/top，内联优先级最高；transform 由 CSS class 控制
+    // （translate(0,-50%) 垂直居中 + 滑入动画 translate(100%,-50%)）。
+    this.modalEl.style.position = "fixed";
+    this.modalEl.style.top = "50%";
+    this.modalEl.style.right = "0";
+    this.modalEl.style.bottom = "auto";
+    this.modalEl.style.left = "auto";
+    this.modalEl.style.margin = "0";
 
     // 标题：优先用实例配置的 title（widgetConfigs[instId].title），缺省回退组件名
     const instCfg = (this.plugin.settings.widgetConfigs || {})[this.instanceId] || {};
@@ -76,6 +76,8 @@ export class WidgetConfigDrawer extends Modal {
     this.renderCardStyle(contentEl, saveCb);
     // 通用外观：字号分区（标题字号一组 + 正文字号一组，统一入口）
     this.renderFontSizes(contentEl, saveCb);
+    // 通用外观：标题模式（仅正文/标题最小化）
+    this.renderHeadlessToggle(contentEl, saveCb);
 
     if (typeof this.widget.renderSettings === "function") {
       try {
@@ -232,6 +234,50 @@ export class WidgetConfigDrawer extends Modal {
         this.plugin.saveSettings();
         saveCb();
       },
+    });
+  }
+
+  /** 标题最小化开关（仅正文模式：标题栏压成细条可拖拽，hover 浮现标题） */
+  private renderHeadlessToggle(target: HTMLElement, saveCb: () => void) {
+    const cfg = this.plugin.settings.widgetConfigs || {};
+    const inst = (cfg[this.instanceId] || {}) as Record<string, unknown>;
+    const enabled = inst.headless === true;
+
+    target.createEl("h4", {
+      text: "📐 标题模式",
+      attr: { style: "margin:10px 0 4px;font-size:13px;font-weight:700;" },
+    });
+    const row = target.createDiv({
+      attr: { style: "display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;" },
+    });
+    row.createSpan({ text: "仅正文（标题最小化）" });
+    const sw = row.createEl("button", {
+      attr: {
+        style: "position:relative;width:34px;height:18px;border-radius:999px;border:none;cursor:pointer;transition:background .2s;",
+      },
+    });
+    const knob = sw.createEl("span", {
+      attr: {
+        style: "position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s;",
+      },
+    });
+    void knob;
+    const sync = (on: boolean) => {
+      sw.style.background = on ? "var(--interactive-accent)" : "var(--background-modifier-border)";
+      knob.style.left = on ? "16px" : "2px";
+    };
+    sync(enabled);
+    sw.addEventListener("click", () => {
+      const next = !(inst.headless === true);
+      cfg[this.instanceId] = { ...inst, headless: next };
+      this.plugin.settings.widgetConfigs = cfg;
+      sync(next);
+      this.plugin.saveSettings();
+      saveCb();
+    });
+    target.createEl("p", {
+      text: "标题栏收成细条（仍可拖拽），hover 显示标题；正文占满卡片，方便自由组合布局",
+      attr: { style: "font-size:11px;color:var(--wb-sub);margin:0 0 8px;" },
     });
   }
 
