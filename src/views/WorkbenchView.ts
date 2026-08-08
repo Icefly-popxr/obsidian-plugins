@@ -55,7 +55,7 @@ function podcastLast30Days(stat: Record<string, Record<string, number>>): boolea
   return out;
 }
 
-type Page = "home" | "domains" | "wiki" | "podcast" | "board" | "config" | "news" | "stocks" | "topics";
+type Page = "home" | "domains" | "wiki" | "podcast" | "board" | "config" | "news" | "stocks" | "topics" | "skills";
 
 export class WorkbenchView extends ItemView {
   plugin: KnowledgeWorkbenchPlugin;
@@ -240,40 +240,66 @@ export class WorkbenchView extends ItemView {
     }
   }
 
-  /** 侧边栏菜单：各页（Emoji+文字）+ 底部收起按钮，点击切换当前页 */
+  /** 侧边栏菜单：Logo + 分组（概览/知识库/雷达追踪/系统）+ 底部收起按钮，点击切换当前页 */
   private buildSidebar(wrap: HTMLElement) {
     const sb = wrap.createDiv({ cls: "wb-sidebar" });
     const collapsed = !!this.plugin.settings.sidebarCollapsed;
     if (collapsed) sb.addClass("collapsed");
 
-    const items: [string, string, Page][] = [
-      ["🧭", "首页概览", "home"],
-      ["📚", "知识领域", "domains"],
-      ["🗺️", "概念库", "wiki"],
-      ["🎧", "精选播客", "podcast"],
-      ["✅", "每日打卡", "board"],
-      ["📰", "行业新闻", "news"],
-      ["📈", "股票池", "stocks"],
-      ["🎯", "选题池", "topics"],
-      ["⚙️", "系统配置", "config"],
+    // 顶部 Logo
+    const logo = sb.createDiv({ cls: "wb-sidebar-logo" });
+    logo.createSpan({ cls: "wb-sidebar-logo__icon", text: "⚓" });
+    logo.createSpan({ cls: "wb-sidebar-logo__text", text: "Workbench" });
+
+    // 分组定义（行业新闻暂留，拆分后再删）
+    const groups: { title: string; system?: boolean; items: [string, string, Page][] }[] = [
+      { title: "概览", items: [["🏠", "首页", "home"]] },
+      {
+        title: "知识库",
+        items: [
+          ["🌌", "星空图", "wiki"], // 原概念库
+          ["🃏", "卡片集", "domains"], // 原知识领域
+          ["🎧", "播客集", "podcast"],
+          ["✅", "日迹录", "board"],
+          ["🛠️", "技能库", "skills"], // 新增占位页
+        ],
+      },
+      {
+        title: "雷达追踪",
+        items: [
+          ["📈", "股票池", "stocks"],
+          ["🎯", "选题池", "topics"],
+          ["📰", "行业新闻", "news"],
+        ],
+      },
+      { title: "系统", system: true, items: [["⚙️", "系统配置", "config"]] },
     ];
-    for (const [icon, label, page] of items) {
-      const item = sb.createDiv({ cls: "wb-side-item" + (this.page === page ? " active" : "") });
-      item.createSpan({ cls: "wb-side-icon", text: icon });
-      item.createSpan({ cls: "wb-side-label", text: label });
-      item.addEventListener("click", () => this.goto(page));
+
+    for (const g of groups) {
+      const group = sb.createDiv({
+        cls: "wb-side-group" + (g.system ? " wb-side-group--system" : ""),
+      });
+      group.createDiv({ cls: "wb-side-group__title", text: g.title });
+      for (const [icon, label, page] of g.items) {
+        const item = group.createDiv({
+          cls: "wb-side-item" + (this.page === page ? " active" : ""),
+        });
+        item.createSpan({ cls: "wb-side-icon", text: icon });
+        item.createSpan({ cls: "wb-side-label", text: label });
+        item.addEventListener("click", () => this.goto(page));
+      }
     }
 
-    // 收起/展开按钮（置底，系统配置之后）
+    // 收起/展开按钮（置底）
     const toggle = sb.createDiv({ cls: "wb-side-toggle" });
-    const toggleIcon = toggle.createSpan({ cls: "wb-side-icon", text: collapsed ? "▶" : "◀" });
-    const toggleLabel = toggle.createSpan({ cls: "wb-side-label", text: collapsed ? "" : "收起" });
+    toggle.createSpan({ cls: "wb-side-icon", text: collapsed ? "▶" : "◀" });
+    toggle.createSpan({ cls: "wb-side-label", text: collapsed ? "展开" : "收起" });
     toggle.addEventListener("click", () => {
       const nowCollapsed = sb.classList.toggle("collapsed");
       this.plugin.settings.sidebarCollapsed = nowCollapsed;
       this.plugin.saveSettings();
-      toggleIcon.setText(nowCollapsed ? "▶" : "◀");
-      toggleLabel.setText(nowCollapsed ? "" : "收起");
+      toggle.children[0].setText(nowCollapsed ? "▶" : "◀");
+      toggle.children[1].setText(nowCollapsed ? "展开" : "收起");
     });
   }
 
@@ -538,10 +564,6 @@ export class WorkbenchView extends ItemView {
         host.querySelectorAll<HTMLElement>(".wb-panel, .wb-kpi-card, .wb-chart").forEach((el) => {
           const base = el.dataset.id || (el.classList.contains("wb-kpi-card") ? "stat" : "card");
           el.dataset.id = prefix + base + (suffix ? `-${suffix}` : "");
-          // 标题最小化（仅正文模式）：widgetConfigs[instId].headless → .wb-headless
-          if (instCfg.headless === true) {
-            el.classList.add("wb-headless");
-          }
           // 光圈效果：全局统一开关（所有组件一致，避免按实例导致互相影响）
           if (this.plugin.settings.showGlow) {
             el.classList.add("wb-glow");
@@ -559,14 +581,15 @@ export class WorkbenchView extends ItemView {
 
   private pageTitle(): string {
     switch (this.page) {
-      case "domains": return "📚 知识领域";
-      case "wiki": return "🗺️ 概念库";
-      case "podcast": return "🎧 精选播客";
-      case "board": return "✅ 每日打卡";
+      case "domains": return "🃏 卡片集";
+      case "wiki": return "🌌 星空图";
+      case "podcast": return "🎧 播客集";
+      case "board": return "✅ 日迹录";
       case "config": return "⚙️ 系统配置";
       case "news": return "📰 行业新闻";
       case "stocks": return "📈 股票池";
       case "topics": return "🎯 选题池";
+      case "skills": return "🛠️ 技能库";
       default: return "工作台";
     }
   }
@@ -606,7 +629,21 @@ export class WorkbenchView extends ItemView {
       case "topics":
         this.renderTopics(page);
         break;
+      case "skills":
+        this.renderSkills(page);
+        break;
     }
+  }
+
+  /** 技能库：占位页（待补充真实内容） */
+  private renderSkills(page: HTMLElement) {
+    const ph = page.createDiv({ cls: "wb-placeholder" });
+    ph.createDiv({ cls: "wb-placeholder__icon", text: "🛠️" });
+    ph.createDiv({ cls: "wb-placeholder__title", text: "技能库" });
+    ph.createDiv({
+      cls: "wb-placeholder__desc",
+      text: "占位页 · 即将上线。这里将整理你的技能、方法论与可复用模板。",
+    });
   }
 
   private renderDomains(page: HTMLElement, d: LoadedData) {
